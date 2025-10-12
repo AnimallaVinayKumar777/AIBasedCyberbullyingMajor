@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Post, User, Notification, Comment, mockPosts, mockUsers, mockNotifications } from '@/data/mockData';
 import { ModeratedPost, postModerationService } from '@/utils/postModeration';
 import { useAuth } from '@/context/AuthContext';
@@ -22,26 +22,72 @@ interface AppContextType extends AppState {
   markNotificationAsRead: (notificationId: string) => void;
   searchUsers: (query: string) => User[];
   searchPosts: (query: string) => ModeratedPost[];
+  clearAllPosts: () => void;
+  exportPostsData: () => string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { user: authUser } = useAuth();
-  const [posts, setPosts] = useState<ModeratedPost[]>(mockPosts);
+
+  // Load posts from localStorage or use mock data as fallback
+  const loadPosts = (): ModeratedPost[] => {
+    try {
+      const savedPosts = localStorage.getItem('chirp_posts');
+      if (savedPosts) {
+        const parsedPosts = JSON.parse(savedPosts);
+        // Convert timestamp strings back to Date objects
+        return parsedPosts.map((post: any) => ({
+          ...post,
+          timestamp: new Date(post.timestamp),
+          author: {
+            ...post.author,
+            // Ensure avatar is set for existing posts
+            avatar: post.author.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.author.name}`
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading posts from localStorage:', error);
+    }
+    return mockPosts;
+  };
+
+  const [posts, setPosts] = useState<ModeratedPost[]>(loadPosts());
   const [users] = useState<User[]>(mockUsers);
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
-  const [currentUser] = useState<User>(authUser || mockUsers[0]);
+  // Update currentUser when authUser changes
+  const [currentUser, setCurrentUser] = useState<User>(authUser || mockUsers[0]);
+
+  useEffect(() => {
+    if (authUser) {
+      setCurrentUser(authUser);
+    }
+  }, [authUser]);
   const [followedUsers, setFollowedUsers] = useState<Set<string>>(new Set());
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
+
+  // Save posts to localStorage whenever posts change
+  useEffect(() => {
+    try {
+      localStorage.setItem('chirp_posts', JSON.stringify(posts));
+    } catch (error) {
+      console.error('Error saving posts to localStorage:', error);
+    }
+  }, [posts]);
 
   const addPost = (content: string, image?: string) => {
     if (!authUser) return;
 
     const newPost: Post = {
       id: Date.now().toString(),
-      author: authUser,
+      author: {
+        ...authUser,
+        // Ensure avatar is set
+        avatar: authUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.name}`
+      },
       content,
       image,
       timestamp: new Date(),
@@ -54,8 +100,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Process through moderation service
     let moderatedPost = postModerationService.processPost(newPost);
 
-    // Process with timers for bully posts
-    const postsWithTimers = postModerationService.processPostsWithTimers([moderatedPost, ...posts]);
+    // Add to beginning of posts array and process with timers
+    const updatedPosts = [moderatedPost, ...posts];
+    const postsWithTimers = postModerationService.processPostsWithTimers(updatedPosts);
     setPosts(postsWithTimers);
   };
 
@@ -161,10 +208,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const searchPosts = (query: string): ModeratedPost[] => {
     if (!query.trim()) return [];
     const lowerQuery = query.toLowerCase();
-    return posts.filter(post => 
+    return posts.filter(post =>
       post.content.toLowerCase().includes(lowerQuery) ||
       post.author.name.toLowerCase().includes(lowerQuery)
     );
+  };
+
+  // Utility function to clear all posts (for testing/debugging)
+  const clearAllPosts = () => {
+    setPosts([]);
+    localStorage.removeItem('chirp_posts');
+  };
+
+  // Utility function to export posts data
+  const exportPostsData = () => {
+    const data = {
+      posts: posts,
+      exportedAt: new Date().toISOString(),
+      totalPosts: posts.length
+    };
+    return JSON.stringify(data, null, 2);
+  };
+
+  // Debug function to check posts persistence (available in browser console)
+  (window as any).chirpDebug = {
+    getPosts: () => posts,
+    clearAllPosts,
+    exportPostsData,
+    getStorageSize: () => {
+      const postsData = localStorage.getItem('chirp_posts');
+      return postsData ? `${Math.round(JSON.stringify(JSON.parse(postsData)).length / 1024)}KB` : '0KB';
+    }
   };
 
   return (
@@ -185,6 +259,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         markNotificationAsRead,
         searchUsers,
         searchPosts,
+        clearAllPosts,
+        exportPostsData,
       }}
     >
       {children}
