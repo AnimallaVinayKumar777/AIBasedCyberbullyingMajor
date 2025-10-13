@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '@/data/mockData';
 import { toast } from '@/hooks/use-toast';
+import { sqliteDB } from '@/utils/sqliteDatabase';
 
 export interface AuthUser extends User {
   email: string;
@@ -166,6 +167,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Add to mock database
     MOCK_USER_CREDENTIALS.push(newUserCredentials);
+
+    // Save to SQLite database
+    try {
+      await sqliteDB.initialize();
+      sqliteDB.insertUser({
+        id: newUser.id,
+        name: newUser.name,
+        handle: newUser.handle,
+        email: newUser.email,
+        avatar: newUser.avatar,
+        bio: newUser.bio || '',
+        followers: 0,
+        following: 0,
+        verified: false
+      });
+      console.log('👤 New user saved to SQLite database');
+    } catch (error) {
+      console.error('❌ Error saving user to database:', error);
+    }
 
     setUser(newUser);
     toast({

@@ -15,15 +15,14 @@ export interface DetectionConfig {
 
 const DEFAULT_CONFIG: DetectionConfig = {
   offensiveWords: [
-    'stupid', 'idiot', 'dumb', 'loser', 'pathetic', 'worthless', 'trash',
-    'disgusting', 'gross', 'ugly', 'fat', 'skinny', 'weird', 'freak',
-    'annoying', 'irritating', 'obnoxious', 'ridiculous', 'bad', 'terrible',
-    'awful', 'horrible', 'hate', 'kill', 'die', 'death'
+    'pathetic', 'worthless', 'disgusting', 'gross', 'freak',
+    'annoying', 'irritating', 'obnoxious', 'ridiculous', 'terrible',
+    'awful', 'horrible', 'hate', 'kill', 'die', 'death','stupid'
   ],
   slurs: [
     'libtard', 'fag', 'pussy', 'bitch', 'slut', 'whore', 'cunt',
     'retard', 'cripple', 'spastic', 'mongoloid', 'chink', 'gook',
-    'spic', 'wetback', 'raghead', 'towelhead', 'kike', 'heeb'
+    'spic', 'wetback', 'raghead', 'towelhead', 'kike', 'heeb','fuck','pussy'
   ],
   threatKeywords: [
     'kill', 'murder', 'die', 'death', 'hurt', 'harm', 'attack',
@@ -118,13 +117,13 @@ export class CyberbullyingDetector {
       confidence += 0.8;
     }
 
-    // Calculate severity - VERY LOW THRESHOLDS for testing
+    // Calculate severity - HIGHER THRESHOLDS for production use
     let severity: 'low' | 'medium' | 'high' | 'none' = 'none';
-    if (severityScore >= 2) {
+    if (severityScore >= 3) {
       severity = 'high';
-    } else if (severityScore >= 1) {
+    } else if (severityScore >= 2) {
       severity = 'medium';
-    } else if (severityScore >= 0.5) {
+    } else if (severityScore >= 1) {
       severity = 'low';
     }
 
@@ -163,7 +162,7 @@ export class CyberbullyingDetector {
   }
 
   shouldHideContent(result: CyberbullyingResult): boolean {
-    return result.severity === 'high' || (result.severity === 'medium' && result.confidence > 0.7);
+    return result.severity === 'high' || (result.severity === 'medium' && result.confidence > 0.9);
   }
 
   shouldFlagForReview(result: CyberbullyingResult): boolean {

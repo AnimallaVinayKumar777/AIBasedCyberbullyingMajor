@@ -10,6 +10,9 @@ export default function Home() {
   const [composerOpen, setComposerOpen] = useState(false);
   const { posts } = useApp();
 
+  console.log('🏠 Home component rendering with posts count:', posts.length);
+  console.log('📋 Posts:', posts.map(p => ({ id: p.id, author: p.author.name, content: p.content.substring(0, 30) + '...' })));
+
   return (
     <>
       <div className="border-b border-border sticky top-0 bg-background/80 backdrop-blur-lg z-10">
