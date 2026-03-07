@@ -1,5 +1,6 @@
 import { Search, TrendingUp, UserPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,8 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { trendingTopics } from '@/data/mockData';
 import { useApp } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export const RightSidebar = () => {
+  const { t } = useTranslation();
   const { users, currentUser, toggleFollow, followedUsers } = useApp();
   const suggestedUsers = users.filter(u => u.id !== currentUser.id).slice(0, 3);
 
@@ -25,10 +28,14 @@ export const RightSidebar = () => {
 
   return (
     <aside className="sticky top-0 h-screen w-80 p-4 hidden xl:block overflow-y-auto">
+      <div className="mb-4">
+        <LanguageSwitcher />
+      </div>
+
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
-          placeholder="Search Chirp"
+          placeholder={t('common.search')}
           className="pl-12 rounded-full bg-muted border-0 focus-visible:ring-1 focus-visible:ring-primary"
         />
       </div>
@@ -37,7 +44,7 @@ export const RightSidebar = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <TrendingUp className="w-5 h-5" />
-            Trending
+            {t('sidebar.trending')}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -61,7 +68,7 @@ export const RightSidebar = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <UserPlus className="w-5 h-5" />
-            Who to follow
+            {t('sidebar.who_to_follow')}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -91,7 +98,7 @@ export const RightSidebar = () => {
                 className="rounded-full flex-shrink-0"
                 onClick={() => handleFollowToggle(user.id, user.name)}
               >
-                {followedUsers.has(user.id) ? "Following" : "Follow"}
+                {followedUsers.has(user.id) ? t('common.following') : t('common.follow')}
               </Button>
             </motion.div>
           ))}

@@ -10,12 +10,14 @@ import { SidebarNav } from "@/components/SidebarNav";
 import { MobileNav } from "@/components/MobileNav";
 import { RightSidebar } from "@/components/RightSidebar";
 import { Composer } from "@/components/Composer";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import Home from "./pages/Home";
 import Profile from "./pages/Profile";
 import Notifications from "./pages/Notifications";
 import Explore from "./pages/Explore";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import "./lib/i18n";
 
 const queryClient = new QueryClient();
 

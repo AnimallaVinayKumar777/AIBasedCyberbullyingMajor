@@ -1,5 +1,7 @@
 import { detectCyberbullying, getPostModerationAction, CyberbullyingResult } from './cyberbullyingDetection';
 import { Post } from '@/data/mockData';
+import { emailService } from './emailService';
+import { sqliteDB } from './sqliteDatabase';
 
 export interface ModeratedPost extends Post {
   cyberbullyingResult?: CyberbullyingResult;
@@ -7,45 +9,95 @@ export interface ModeratedPost extends Post {
   isHidden?: boolean;
   isBully?: boolean;
   isReported?: boolean;
-  bullyTimerStart?: Date;
-  autoBlurTime?: Date;
-  isAutoBlurred?: boolean;
   isAutoDeleted?: boolean;
+  warningEmailSent?: boolean;
+  deactivationEmailSent?: boolean;
 }
 
 export class PostModerationService {
-  processPost(post: Post): ModeratedPost {
-    console.log(`⚙️ Processing post: "${post.content.substring(0, 50)}..."`);
-    const cyberbullyingResult = detectCyberbullying(post.content);
-    const moderationAction = getPostModerationAction(post.content);
+  /**
+   * Process a post through the moderation system
+   * Automatically deletes bully posts from database and sends email notification
+   */
+  async processPost(post: Post): Promise<ModeratedPost> {
+    console.log('🛡️ ====== Starting post moderation ======');
+    console.log('🛡️ Post content:', post.content);
+    console.log('🛡️ Author:', post.author.name);
+    
+    // Use multilingual detection
+    const cyberbullyingResult = await detectCyberbullying(post.content);
+    console.log('🛡️ Detection result:', cyberbullyingResult);
+    
+    const moderationAction = await getPostModerationAction(post.content);
+    console.log('🛡️ Moderation action:', moderationAction);
+    
+    // Determine if this is a bully post (any detected cyberbullying)
+    const isBully = cyberbullyingResult.isCyberbullying;
+    console.log('🛡️ Is bully:', isBully);
 
-    const moderatedPost: ModeratedPost = {
+    // If it's a bully post, auto-delete it and send immediate email notification
+    if (isBully) {
+      console.log('🛡️ ⚠️ Bully post detected! Sending email and hiding post...');
+      console.log('🛡️ Detection details:');
+      console.log('  - Severity:', cyberbullyingResult.severity);
+      console.log('  - Categories:', cyberbullyingResult.categories);
+      console.log('  - Confidence:', cyberbullyingResult.confidence);
+      console.log('  - Detected words:', cyberbullyingResult.detectedWords);
+      
+      // Get user email - use author's actual email
+      const userEmail = post.author.email;
+      console.log('🛡️ 📧 Sending email to:', userEmail);
+      console.log('🛡️ 📧 Author name:', post.author.name);
+      console.log('🛡️ 📧 Author handle:', post.author.handle);
+      
+      // Send immediate warning email about the flagged post
+      try {
+        console.log('🛡️ 📧 Attempting to send email...');
+        const emailSent = await emailService.sendAccountWarningEmail(
+          userEmail,
+          post.author.name,
+          post.content,
+          post.author.handle
+        );
+        console.log('🛡️ 📧 Email send result:', emailSent);
+      } catch (error) {
+        console.error('🛡️ 📧 Error sending warning email:', error);
+      }
+
+      // Auto-delete the bully post - mark as hidden and auto-deleted
+      return {
+        ...post,
+        cyberbullyingResult,
+        moderationAction: 'hide', // Hide the post
+        isHidden: true, // Hide in UI
+        isBully: true,
+        isReported: false,
+        isAutoDeleted: true, // Mark as auto-deleted
+        warningEmailSent: true
+      };
+    }
+
+    // For non-bully posts, process normally
+    console.log('🛡️ ✅ Post is clean, allowing through');
+    return {
       ...post,
       cyberbullyingResult,
       moderationAction,
-      isHidden: moderationAction === 'hide',
-      isBully: cyberbullyingResult.isCyberbullying && cyberbullyingResult.severity !== 'low',
-      isReported: false // This would be set when users report posts
+      isHidden: false,
+      isBully: false,
+      isReported: false,
+      isAutoDeleted: false
     };
-
-    console.log(`✅ Post processed - isBully: ${moderatedPost.isBully}, severity: ${cyberbullyingResult.severity}`);
-    return moderatedPost;
   }
 
-  processPosts(posts: Post[]): ModeratedPost[] {
-    return posts.map(post => this.processPost(post));
+  async processPosts(posts: Post[]): Promise<ModeratedPost[]> {
+    const promises = posts.map(post => this.processPost(post));
+    return await Promise.all(promises);
   }
 
   reportPost(postId: string, reason: string): void {
     // In a real app, this would update the database
     console.log(`Post ${postId} reported for: ${reason}`);
-
-    // For now, we'll just log it
-    // In a production app, you'd want to:
-    // 1. Store the report in a database
-    // 2. Increment a report count for the post
-    // 3. Potentially hide the post if it gets enough reports
-    // 4. Notify moderators
   }
 
   getModerationStats(posts: ModeratedPost[]): {
@@ -54,7 +106,6 @@ export class PostModerationService {
     bullyPosts: number;
     reportedPosts: number;
     flaggedPosts: number;
-    autoBlurredPosts: number;
     autoDeletedPosts: number;
   } {
     return {
@@ -63,67 +114,32 @@ export class PostModerationService {
       bullyPosts: posts.filter(p => p.isBully).length,
       reportedPosts: posts.filter(p => p.isReported).length,
       flaggedPosts: posts.filter(p => p.moderationAction === 'flag').length,
-      autoBlurredPosts: posts.filter(p => p.isAutoBlurred).length,
       autoDeletedPosts: posts.filter(p => p.isAutoDeleted).length
     };
   }
 
-  // Timer management for bully posts
-  startBullyTimer(post: ModeratedPost): ModeratedPost {
-    if (!post.isBully || post.bullyTimerStart) {
-      return post;
-    }
+  /**
+   * Process posts with timers - simplified version without edit timers
+   * All bully posts are auto-deleted immediately upon detection
+   */
+  async processPostsWithTimers(posts: ModeratedPost[]): Promise<ModeratedPost[]> {
+    const processedPosts = await Promise.all(posts.map(async post => {
+      // Re-process the post through moderation service to get fresh results
+      const moderatedPost = await this.processPost(post);
 
-    const now = new Date();
-    const autoBlurTime = new Date(now.getTime() + 2 * 1000); // 2 seconds from now (for testing)
-
-    return {
-      ...post,
-      bullyTimerStart: now,
-      autoBlurTime
-    };
-  }
-
-  checkAndApplyAutoModeration(post: ModeratedPost): ModeratedPost {
-    if (!post.isBully || !post.bullyTimerStart || !post.autoBlurTime) {
-      return post;
-    }
-
-    const now = new Date();
-    const timeElapsed = now.getTime() - post.bullyTimerStart.getTime();
-    const twoSecondsInMs = 2 * 1000; // 2 seconds for testing
-
-    if (timeElapsed >= twoSecondsInMs) {
-      // Auto-blur after 2 minutes for medium severity
-      if (post.cyberbullyingResult?.severity === 'medium') {
-        return {
-          ...post,
-          isAutoBlurred: true,
-          isHidden: true
-        };
-      }
-      // Auto-delete for high severity
-      else if (post.cyberbullyingResult?.severity === 'high') {
-        return {
-          ...post,
-          isAutoDeleted: true
-        };
-      }
-    }
-
-    return post;
-  }
-
-  processPostsWithTimers(posts: ModeratedPost[]): ModeratedPost[] {
-    return posts.map(post => {
-      // Start timer for new bully posts
-      let processedPost = this.startBullyTimer(post);
-
-      // Check and apply auto-moderation
-      processedPost = this.checkAndApplyAutoModeration(processedPost);
+      let processedPost: ModeratedPost = {
+        ...moderatedPost,
+        // Preserve email sent flags
+        warningEmailSent: post.warningEmailSent || moderatedPost.warningEmailSent,
+        deactivationEmailSent: post.deactivationEmailSent,
+        // Preserve auto-delete fields
+        isAutoDeleted: post.isAutoDeleted || moderatedPost.isAutoDeleted,
+      };
 
       return processedPost;
-    });
+    }));
+
+    return processedPosts;
   }
 }
 

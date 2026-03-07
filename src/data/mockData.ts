@@ -3,6 +3,7 @@ export interface User {
   name: string;
   handle: string;
   avatar: string;
+  email?: string;
   bio?: string;
   coverImage?: string;
   followers: number;
@@ -36,8 +37,8 @@ export interface Post {
 }
 
 // Process posts through moderation service
-const processPostsForModeration = (posts: Post[]): ModeratedPost[] => {
-  return postModerationService.processPosts(posts);
+const processPostsForModeration = async (posts: Post[]): Promise<ModeratedPost[]> => {
+  return await postModerationService.processPosts(posts);
 };
 
 export interface Notification {
@@ -54,6 +55,7 @@ export const mockUsers: User[] = [
     id: '1',
     name: 'Sarah Chen',
     handle: '@sarahchen',
+    email: 'sarahchen@example.com',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
     bio: 'Software engineer by day, digital artist by night. Building cool stuff with React and TypeScript.',
     coverImage: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=1200&h=400&fit=crop',
@@ -65,6 +67,7 @@ export const mockUsers: User[] = [
     id: '2',
     name: 'Alex Rivera',
     handle: '@alexrivera',
+    email: 'alexrivera@example.com',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
     bio: 'Tech enthusiast | Coffee lover ☕ | Sharing thoughts on web development',
     followers: 856,
@@ -74,6 +77,7 @@ export const mockUsers: User[] = [
     id: '3',
     name: 'Maya Patel',
     handle: '@mayapatel',
+    email: 'mayapatel@example.com',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maya',
     bio: 'UX Designer passionate about creating delightful user experiences',
     followers: 2103,
@@ -84,6 +88,7 @@ export const mockUsers: User[] = [
     id: '4',
     name: 'Jordan Lee',
     handle: '@jordanlee',
+    email: 'jordanlee@example.com',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan',
     bio: 'Product Manager | Tech trends | AI enthusiast 🤖',
     followers: 543,
@@ -93,6 +98,7 @@ export const mockUsers: User[] = [
     id: '5',
     name: 'Sam Taylor',
     handle: '@samtaylor',
+    email: 'samtaylor@example.com',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sam',
     bio: 'Full-stack developer | Open source contributor',
     followers: 1876,
@@ -244,8 +250,8 @@ const rawMockPosts: Post[] = [
   },
 ];
 
-// Process posts through moderation service
-const mockPosts: ModeratedPost[] = processPostsForModeration(rawMockPosts);
+// Process posts through moderation service - not processing at module load
+const mockPosts: ModeratedPost[] = rawMockPosts as ModeratedPost[];
 
 export { mockPosts };
 
@@ -289,4 +295,5 @@ export const trendingTopics = [
   { tag: '#TypeScript', posts: '29.4K' },
   { tag: '#AI', posts: '156.8K' },
   { tag: '#Design', posts: '67.3K' },
+  {tag:'#affu',posts:'786k'}
 ];

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, MessageCircle, Repeat2, Share, Flag, AlertTriangle, Clock, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Repeat2, Share, Flag, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,25 +13,68 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ModeratedPost } from '@/utils/postModeration';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { CommentDialog } from '@/components/CommentDialog';
 import { postModerationService } from '@/utils/postModeration';
-import { useBullyTimer, formatTimeRemaining } from '@/hooks/useBullyTimer';
+
+// Function to highlight bully words in content
+const highlightBullyWords = (content: string, bullyWords: string[]): string => {
+  if (!content) return '';
+  if (!bullyWords.length) return content;
+
+  let highlightedContent = content;
+  bullyWords.forEach(word => {
+    const regex = new RegExp(word, 'gi');
+    highlightedContent = highlightedContent.replace(regex, `<span class="bg-red-200 text-red-800 px-1 rounded font-semibold">$&</span>`);
+  });
+  return highlightedContent;
+};
 
 interface PostCardProps {
   post: ModeratedPost;
 }
 
 export const PostCard = ({ post }: PostCardProps) => {
+  if (!post || !post.id) {
+    console.error('PostCard received invalid post:', post);
+    return null;
+  }
   const { toggleLike, toggleRepost, likedPosts, repostedPosts } = useApp();
+  const { user } = useAuth();
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
-  const [isRevealed, setIsRevealed] = useState(!post.isHidden);
   const isLiked = likedPosts.has(post.id);
   const isReposted = repostedPosts.has(post.id);
 
-  // Timer for bully posts
-  const { timeRemaining, isActive, isExpired } = useBullyTimer(post);
+  // All content is shown (including bully posts - with warning badge and blur)
+
+  const contentJSX = (
+    <>
+      <p
+        className={cn(
+          "text-foreground whitespace-pre-wrap mb-3",
+          post.isBully && "blur-sm select-none transition-all duration-300 hover:blur-0 cursor-pointer"
+        )}
+        dangerouslySetInnerHTML={{
+          __html: highlightBullyWords(post.content || '', post.cyberbullyingResult?.detectedWords || [])
+        }}
+      />
+
+      {post.image && (
+        <div className="rounded-2xl overflow-hidden mb-3 border border-border">
+          <img
+            src={post.image}
+            alt="Post content"
+            className={cn(
+              "w-full h-auto object-cover",
+              post.isBully && "blur-sm select-none transition-all duration-300 hover:blur-0 cursor-pointer"
+            )}
+          />
+        </div>
+      )}
+    </>
+  );
 
   const handleLike = () => {
     toggleLike(post.id);
@@ -70,14 +113,6 @@ export const PostCard = ({ post }: PostCardProps) => {
     });
   };
 
-  const handleReveal = () => {
-    setIsRevealed(true);
-    toast({
-      title: "Content revealed",
-      description: "Tweet content is now visible.",
-    });
-  };
-
   const handleReport = (reason: string) => {
     postModerationService.reportPost(post.id, reason);
     toast({
@@ -98,7 +133,8 @@ export const PostCard = ({ post }: PostCardProps) => {
     return `${Math.floor(diff / (1000 * 60))}m`;
   };
 
-  const formatNumber = (num: number) => {
+  const formatNumber = (num: number | undefined | null) => {
+    if (num == null || isNaN(num)) return '0';
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
   };
@@ -112,16 +148,16 @@ export const PostCard = ({ post }: PostCardProps) => {
       <div className="flex gap-3">
         <Avatar className="w-12 h-12 flex-shrink-0">
           <AvatarImage src={post.author.avatar} alt={post.author.name} />
-          <AvatarFallback>{post.author.name[0]}</AvatarFallback>
+          <AvatarFallback>{post.author.name?.[0] || '?'}</AvatarFallback>
         </Avatar>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 mb-1">
             <span className="font-semibold text-foreground hover:underline truncate">
-              {post.author.name}
+              {post.author.name || 'Unknown'}
             </span>
             <span className="text-muted-foreground text-sm truncate">
-              {post.author.handle}
+              {post.author.handle || '@unknown'}
             </span>
             <span className="text-muted-foreground text-sm">·</span>
             <span className="text-muted-foreground text-sm flex-shrink-0">
@@ -132,81 +168,31 @@ export const PostCard = ({ post }: PostCardProps) => {
           {/* Status badges */}
           <div className="flex gap-2 mb-2">
             {post.isBully && (
-              <Badge variant="destructive" className="bg-red-500 hover:bg-red-600">
-                Bully
-              </Badge>
+              <>
+                <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white">
+                  OK
+                </Badge>
+                <Badge variant="destructive" className="bg-red-500 hover:bg-red-600">
+                  Bully
+                </Badge>
+              </>
             )}
             {post.isReported && (
               <Badge variant="secondary" className="bg-green-500 hover:bg-green-600 text-white">
                 Reported
               </Badge>
             )}
-            {post.isAutoBlurred && (
-              <Badge variant="secondary" className="bg-orange-500 hover:bg-orange-600 text-white">
-                Auto-Blurred
-              </Badge>
-            )}
-            {post.isAutoDeleted && (
-              <Badge variant="destructive" className="bg-gray-500 hover:bg-gray-600 text-white">
-                Auto-Deleted
-              </Badge>
-            )}
           </div>
 
-          {/* Bully post countdown timer */}
-          {post.isBully && isActive && !post.isAutoBlurred && !post.isAutoDeleted && (
-            <div className="flex items-center gap-2 mb-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
-              <Clock className="w-5 h-5 text-red-500 animate-pulse" />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                  ⚠️ Content Violation Detected
-                </span>
-                <span className="text-sm text-red-500 dark:text-red-400">
-                  Auto-blur in: <span className="font-bold">{formatTimeRemaining(timeRemaining)}</span> (2 seconds)
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Auto-deleted content */}
-          {post.isAutoDeleted ? (
-            <div className="relative mb-3">
-              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center border border-gray-300 dark:border-gray-600">
-                <Trash2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500 dark:text-gray-400 mb-2">
-                  This post has been automatically deleted due to severe policy violations.
-                </p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Content removed after 2-second timer expired.
-                </p>
-              </div>
-            </div>
-          ) : /* Auto-blurred content */
-          post.isAutoBlurred || (post.isHidden && !isRevealed) ? (
-            <div className="relative mb-3">
-              <div className="bg-muted/80 backdrop-blur-sm rounded-lg p-8 text-center border border-border">
-                <p className="text-muted-foreground mb-4">
-                  This tweet has been automatically blurred due to content policy. Click below to reveal.
-                </p>
-                <Button onClick={handleReveal} className="bg-blue-500 hover:bg-blue-600">
-                  Reveal Tweet
-                </Button>
-              </div>
+          {/* Post content - always shown */}
+          {post.isHidden ? (
+            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center border border-gray-300 dark:border-gray-600">
+              <p className="text-gray-500 dark:text-gray-400">
+                This post has been hidden due to policy violations.
+              </p>
             </div>
           ) : (
-            <>
-              <p className="text-foreground whitespace-pre-wrap mb-3">{post.content}</p>
-
-              {post.image && (
-                <div className="rounded-2xl overflow-hidden mb-3 border border-border">
-                  <img
-                    src={post.image}
-                    alt="Post content"
-                    className="w-full h-auto object-cover"
-                  />
-                </div>
-              )}
-            </>
+            contentJSX
           )}
 
           <div className="flex items-center justify-between mt-4">

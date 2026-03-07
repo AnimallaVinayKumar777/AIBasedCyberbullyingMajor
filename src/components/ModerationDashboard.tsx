@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Eye, EyeOff, CheckCircle, XCircle, Flag, Clock, Trash2 } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, CheckCircle, Flag, Trash2 } from 'lucide-react';
 import { mockPosts } from '@/data/mockData';
 import { postModerationService } from '@/utils/postModeration';
 import { ModeratedPost } from '@/utils/postModeration';
@@ -13,7 +13,6 @@ export const ModerationDashboard = () => {
   const [posts, setPosts] = useState<ModeratedPost[]>(mockPosts);
   const stats = postModerationService.getModerationStats(posts);
 
-  const autoBlurredPosts = posts.filter(post => post.isAutoBlurred);
   const autoDeletedPosts = posts.filter(post => post.isAutoDeleted);
 
   const handlePostAction = (postId: string, action: 'approve' | 'hide' | 'flag') => {
@@ -83,7 +82,7 @@ export const ModerationDashboard = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Total Posts</CardTitle>
@@ -118,14 +117,6 @@ export const ModerationDashboard = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Auto-Blurred</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.autoBlurredPosts}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Auto-Deleted</CardTitle>
           </CardHeader>
           <CardContent>
@@ -136,13 +127,11 @@ export const ModerationDashboard = () => {
 
       {/* Moderation Tabs */}
       <Tabs defaultValue="flagged" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="flagged">Flagged ({flaggedPosts.length})</TabsTrigger>
           <TabsTrigger value="hidden">Hidden ({hiddenPosts.length})</TabsTrigger>
           <TabsTrigger value="bully">Bully ({bullyPosts.length})</TabsTrigger>
           <TabsTrigger value="reported">Reports ({reportedPosts.length})</TabsTrigger>
-          <TabsTrigger value="autoBlurred">Auto-Blurred ({autoBlurredPosts.length})</TabsTrigger>
-          <TabsTrigger value="autoDeleted">Auto-Deleted ({autoDeletedPosts.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="flagged" className="space-y-4">
@@ -268,61 +257,6 @@ export const ModerationDashboard = () => {
                   <p className="text-sm bg-blue-50 dark:bg-blue-950/20 p-3 rounded border border-blue-200 dark:border-blue-800">
                     {post.content}
                   </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="autoBlurred" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Auto-Blurred Posts</CardTitle>
-              <CardDescription>Posts automatically blurred after 2-minute timer</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {autoBlurredPosts.map(post => (
-                <div key={post.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-orange-500" />
-                    <span className="font-medium">{post.author.name}</span>
-                    <Badge className="bg-orange-500 text-white">Auto-Blurred</Badge>
-                  </div>
-                  <p className="text-sm bg-orange-50 dark:bg-orange-950/20 p-3 rounded border border-orange-200 dark:border-orange-800">
-                    {post.content}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => handlePostAction(post.id, 'approve')}>
-                      <Eye className="w-4 h-4 mr-1" />
-                      Unhide
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="autoDeleted" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Auto-Deleted Posts</CardTitle>
-              <CardDescription>Posts automatically deleted for severe violations</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {autoDeletedPosts.map(post => (
-                <div key={post.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Trash2 className="w-4 h-4 text-gray-500" />
-                    <span className="font-medium">{post.author.name}</span>
-                    <Badge className="bg-gray-500 text-white">Auto-Deleted</Badge>
-                  </div>
-                  <p className="text-sm bg-gray-50 dark:bg-gray-950/20 p-3 rounded border border-gray-200 dark:border-gray-800 text-gray-500 italic">
-                    Content permanently removed due to severe policy violations
-                  </p>
-                  <div className="text-xs text-gray-400">
-                    Original content: "{post.content}"
-                  </div>
                 </div>
               ))}
             </CardContent>

@@ -1,43 +1,22 @@
-import { franc } from 'franc';
-
-export interface CyberbullyingResult {
-  isCyberbullying: boolean;
-  severity: 'low' | 'medium' | 'high' | 'none';
-  categories: string[];
-  confidence: number;
-  detectedLanguage?: string;
-  detectedWords?: string[];
-}
-
-export interface DetectionConfig {
-  offensiveWords: string[];
-  slurs: string[];
-  threatKeywords: string[];
-  harassmentPatterns: RegExp[];
-  hateSpeechTerms: string[];
-  universalPatterns?: RegExp[];
-}
-
-const DEFAULT_CONFIG: DetectionConfig = {
+const DEFAULT_CONFIG = {
   offensiveWords: [
-      'bully', 'bullying', 'bullied',
       'pathetic', 'worthless', 'disgusting', 'gross', 'freak',
       'annoying', 'irritating', 'obnoxious', 'ridiculous', 'terrible',
-      'awful', 'horrible', 'hate', 'kill', 'die', 'death','stupid',
+      'awful', 'horrible', 'hate', 'kill', 'die', 'death','stupid', 'fuck',
       // Hindi offensive words
-      'bekar', 'bakwas', 'gadha', 'ullu', 'idiot', 'fool',
+      'bekar', 'bakwas', 'gadha', 'ullu', 'stupid', 'idiot', 'fool',
       'nikamma', 'nalayak', 'badtameez', 'ghatiya', 'faltu', 'useless',
       'pagal', 'madarchod', 'bhosdike', 'chutiya', 'randi', 'kutta',
       'kameena', 'harami', 'kutti', 'bhosda', 'chut', 'lodu',
       // Telugu offensive words
       'pichi', 'modda', 'dengu', 'lanjakodaka', 'korika', 'pooku',
-      'sala', 'nayala', 'dongodu', 'theeya', 'cheththa',
+      'sala', 'nayala', 'dongodu', 'theeya', 'cheththa', 'useless',
       'gadida', 'gudisa', 'kodaka', 'koduku', 'kodukulu', 'kodukulodu',
       // Kannada offensive words
       'madar', 'bhosda', 'chutiya', 'randi', 'kutta', 'kameena', 'harami',
       'kutti', 'chut', 'lodu', 'gadha', 'ullu', 'bekar', 'bakwas',
       'nikamma', 'nalayak', 'badtameez', 'ghatiya', 'faltu', 'pagal',
-      'idiot', 'fool', 'useless',
+      'stupid', 'idiot', 'fool', 'useless',
       // Spanish offensive words
       'idiota', 'estupido', 'imbecil', 'pendejo', 'joto', 'maricon',
       'cabron', 'mierda', 'culo', 'puta', 'zorra', 'perra',
@@ -48,7 +27,7 @@ const DEFAULT_CONFIG: DetectionConfig = {
       // German offensive words
       'idiot', 'dumm', 'blod', 'arschloch', 'scheiss', 'mist',
       'verdammt', 'beschissen', 'kotz', 'null', 'nutzlos',
-      // Arabic offensive words (common insults)
+      // Arabic offensive words
       'jalab', 'kalb', 'khinzir', 'hamar', 'ahbal', 'mukhtalat',
       'laqi', 'fahish', 'dhanib', 'safahi',
       // Chinese offensive words
@@ -77,7 +56,7 @@ const DEFAULT_CONFIG: DetectionConfig = {
       'svoloch', 'podlec', 'ublyudok',
     ],
   slurs: [
-    'libtard', 'fag', 'bitch', 'slut', 'whore', 'cunt', 'fuck', 'pussy',
+    'libtard', 'fag', 'pussy', 'bitch', 'slut', 'whore', 'cunt', 'fuck', 'asshole', 'bastard',
     'retard', 'cripple', 'spastic', 'mongoloid', 'chink', 'gook',
     'spic', 'wetback', 'raghead', 'towelhead', 'kike', 'heeb',
     // Hindi slurs
@@ -89,8 +68,7 @@ const DEFAULT_CONFIG: DetectionConfig = {
     'dongodu', 'theeya', 'cheththa', 'gadida', 'gudisa', 'kodaka',
     'koduku', 'kodukulu', 'kodukulodu', 'dengutha', 'donga',
     // Telugu transliterations of English slurs
-    'ఫక్', 'ఫక్ చేస్తాను', 'ఫక్', 'fuck', 'asshole', 'bastard',
-    'అలా', 'అసలు', 'నాకు', 'తెలియదు',
+    'ఫక్', 'ఫక్ చేస్తాను', 'fuck',
     // Kannada slurs
     'madar', 'bhosda', 'chutiya', 'randi', 'kutta', 'kameena', 'harami',
     'kutti', 'chut', 'lodu', 'gandu', 'chodu', 'lavde', 'jhantu',
@@ -107,10 +85,6 @@ const DEFAULT_CONFIG: DetectionConfig = {
     'khanzir', 'kalb', 'hamar', 'fahish',
     // Chinese slurs
     'zazhong', 'waiguoren', 'zhina',
-    // Japanese slurs
-    'koramu', 'burakumin', 'ainu',
-    // Korean slurs
-    'jeokpa', 'dongpo',
   ],
   threatKeywords: [
     'kill', 'murder', 'die', 'death', 'hurt', 'harm', 'attack',
@@ -130,7 +104,7 @@ const DEFAULT_CONFIG: DetectionConfig = {
     'నేను నిన్చు కుంటాను', // I will kick you
     'నేను నిన్చు కొట్టాను',
     'నేను దేగుత','నువ్వు మూర్ఖుడివి',
-    'तुम एक बेवकूफ हो',// I beat you
+     // I beat you
     // Kannada threat keywords
     'kollu', 'maru', 'kattu', 'kottu', 'nashta', 'tappa', 'dari',
     'bhaya', 'hatya', 'vadhe', 'kollalu', 'maralu', 'kattuvenu',
@@ -156,18 +130,10 @@ const DEFAULT_CONFIG: DetectionConfig = {
     // Korean threat keywords
     'satae', 'jugeo', 'ttara', 'beolda', 'makhda',
     'naega neoleul jug-eo', 'siinda',
-    // Tamil threat keywords
-    'vazhi', 'pidi', 'kol', 'sedu', 'pogum',
-    'enaku nee mariyum', 'nee vali',
-    // Malayalam threat keywords
-    'vazhi', 'pidi', 'kol', 'sedu', 'pogum',
-    // Bengali threat keywords
-    'marbo', 'khunu', 'bane', 'ghusbo', 'mari',
   ],
   harassmentPatterns: [
     /you are a? [a-zA-Z]+/i,  // "you are a [insult]"
     /you'?re? a? [a-zA-Z]+/i,
-    // More specific harassment patterns (avoid generic "you are X" which matches benign adjectives)
     /i hate you/i,
     /i'?ll (kill|murder|beat|hurt|harm|attack|estroy|eliminate|finish) you/i,
     /you should [a-zA-Z]+ yourself/i,
@@ -197,24 +163,7 @@ const DEFAULT_CONFIG: DetectionConfig = {
     /ikkada nundi/i,
     /matladaku/i,
     /andaru ninnu/i,
-    // Telugu threat sentences
-    /నేను.*కొడతాను/i, // I will beat you
-    /నేను.*కుంటాను/i, // I will kick you
-    /నేను.*కొట్టాను/i, // I beat you
-    /నీకు.*జరుగుతుంది/i, // Something will happen to you
-    /మీకు.*తెలుసు/i, // You know what
-    /ఏం.* చేస్తావ్/i, // What will you do
-    /చంపుతా/i, // Will kill
-    /హతం/i, // Murder
-    // Telugu sexual threat/harassment patterns
-    /ఫక్/i, // fuck
-    /ఫక్ చేస్తాను/i, // I will fuck you
-    /Sex/i,
-    /sex/i,
-    // Hindi threat sentences
-    /मैं तुम्हें मारूंगा/i,
-    /तू मरेगा/i,
-    /तुझे मारेंगे/i,
+    /నిన్ను [a-zA-Z]+/i,
     // Kannada harassment patterns
     /ninu [a-zA-Z]+/i,
     /nimma [a-zA-Z]+/i,
@@ -225,12 +174,6 @@ const DEFAULT_CONFIG: DetectionConfig = {
     /illinda hogi/i,
     /matadalu/i,
     /ellaru ninna/i,
-    // Kannada threat sentences
-    /ನಾನು.* ಕೊಲ್ಲುತ್ತೇನೆ/i,
-    /ನಾನು.* ಸಾಯಿಸುತ್ತೇನೆ/i,
-    /ನೀನು.* ಸಾಯುತೀಯ/i,
-    /ನಿನ್ನನ್ನು.* ಕೊಲ್ಲು/i,
-    /ನಿಗೆ.* ಹಾನಿ/i,
   ],
   hateSpeechTerms: [
     'terrorist', 'extremist', 'radical', 'fundamentalist',
@@ -255,81 +198,87 @@ const DEFAULT_CONFIG: DetectionConfig = {
     /(\w+)\s+\1{2,}/gi,  // Repeated words
     /!{2,}/g,  // Multiple exclamation marks
     /\?{2,}/g,  // Multiple question marks
-    // Universal insult patterns that work in ANY language
-    /\b(stupid|idiot|idiotic|fool|foolish|dumb|moron|imbecile|retard|loser|pathetic|worthless|disgusting|trash|garbage|shit|damn|hell|bully|bullying)\b/gi,
+    // Universal insult patterns
+    /\b(stupid|idiot|idiotic|fool|foolish|dumb|moron|imbecile|retard|loser|pathetic|worthless|disgusting|trash|garbage|shit|damn|hell)\b/gi,
     // Universal slur patterns
-    /\b(fuck|shit|damn|bitch|ass|damn|hell|crap|piss|damned)\b/gi,
+    /\b(fuck|shit|bitch|ass|damn|hell|crap|piss|damned)\b/gi,
     // Universal threat patterns
     /\b(kill|murder|die|dead|death|beat|hurt|harm|attack|destroy|eliminate)\b/gi,
-    // Repeated punctuation (angry writing)
+    // Repeated punctuation
     /[!?]{3,}/g,
-    // All caps sentence (shouting)
-    /^[A-Z\s]{10,}$/gm,
   ]
 };
 
-// Supported languages for direct detection
-const SUPPORTED_LANGUAGES = ['eng', 'hin', 'tel', 'kan'];
-
-async function detectLanguage(text: string): Promise<string> {
-  const lang = franc(text);
-  return lang || 'und';
-}
-
-function detectLanguageSync(text: string): string {
-  const lang = franc(text);
-  return lang || 'und';
-}
-
-// Detect language and translate to English for analysis
-async function detectAndTranslate(text: string): Promise<{ language: string; translatedText: string; isTranslated: boolean }> {
-  const detectedLang = await detectLanguage(text);
+// Language detection using simple heuristics
+function detectLanguage(text) {
+  // Check for non-ASCII characters
+  const hasCyrillic = /[\u0400-\u04FF]/.test(text);
+  const hasArabic = /[\u0600-\u06FF]/.test(text);
+  const hasChinese = /[\u4E00-\u9FFF]/.test(text);
+  const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(text);
+  const hasKorean = /[\uAC00-\uD7AF]/.test(text);
+  const hasDevanagari = /[\u0900-\u097F]/.test(text);
+  const hasTelugu = /[\u0C00-\u0C7F]/.test(text);
+  const hasKannada = /[\u0C80-\u0CFF]/.test(text);
+  const hasTamil = /[\u0B80-\u0BFF]/.test(text);
   
-  // If already English or unknown, return original
-  if (detectedLang === 'eng' || detectedLang === 'und') {
+  if (hasCyrillic) return 'rus';
+  if (hasArabic) return 'arb';
+  if (hasChinese) return 'zho';
+  if (hasJapanese) return 'jpn';
+  if (hasKorean) return 'kor';
+  if (hasDevanagari) return 'hin';
+  if (hasTelugu) return 'tel';
+  if (hasKannada) return 'kan';
+  if (hasTamil) return 'tam';
+  
+  return 'eng';
+}
+
+// Translate text to English using Google Translate
+async function translateToEnglish(text, fromLang) {
+  if (fromLang === 'eng') return text;
+  
+  try {
+    const response = await fetch(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${fromLang}&tl=en&dt=t&q=${encodeURIComponent(text)}`
+    );
+    const data = await response.json();
+    return data[0][0][0];
+  } catch (error) {
+    console.log('Translation failed:', error);
+    return text;
+  }
+}
+
+// Detect and translate content
+async function detectAndTranslate(text) {
+  const detectedLang = detectLanguage(text);
+  
+  if (detectedLang === 'eng') {
     return { language: detectedLang, translatedText: text, isTranslated: false };
   }
   
-  // Try to translate to English for analysis
   try {
     const translatedText = await translateToEnglish(text, detectedLang);
-    // Check if translation was successful (text changed meaningfully)
-    const isTranslated = translatedText !== text && translatedText.length > 0;
-    return { language: detectedLang, translatedText, isTranslated };
+    return { 
+      language: detectedLang, 
+      translatedText, 
+      isTranslated: translatedText !== text 
+    };
   } catch (error) {
-    console.log('Translation failed, will analyze original text:', error);
     return { language: detectedLang, translatedText: text, isTranslated: false };
   }
 }
 
-async function translateToEnglish(text: string, fromLang: string): Promise<string> {
-  console.log(`🔄 Attempting translation from ${fromLang} to English: "${text}"`);
-  if (fromLang === 'eng' || fromLang === 'und') {
-    return text;
-  }
-  try {
-    const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${fromLang}&tl=en&dt=t&q=${encodeURIComponent(text)}`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    const translatedText = data[0][0][0];
-    console.log(`✅ Translation successful: "${translatedText}"`);
-    return translatedText;
-  } catch (error) {
-    console.error('❌ Translation failed with error:', error);
-    return text;
-  }
-}
-
-function testPattern(pattern: RegExp, text: string): boolean {
+function testPattern(pattern, text) {
   if (pattern.global || pattern.sticky) {
     pattern.lastIndex = 0;
   }
   return pattern.test(text);
 }
 
-function computeSeverity(score: number): 'low' | 'medium' | 'high' | 'none' {
+function computeSeverity(score) {
   // Lowered thresholds to detect more bullying
   if (score >= 2) return 'high';
   if (score >= 1) return 'medium';
@@ -337,22 +286,21 @@ function computeSeverity(score: number): 'low' | 'medium' | 'high' | 'none' {
   return 'none';
 }
 
-function findTerms(lowerText: string, words: string[], terms: string[]): string[] {
-  const found: string[] = [];
+function findTerms(lowerText, words, terms) {
+  const found = [];
 
-  // Check if text contains non-Latin characters (like Telugu, Hindi, Kannada)
+  // Check for non-Latin characters
   const hasNonLatinChars = /[\u0900-\u097F\u0C00-\u0C7F\u0C80-\u0CFF\u4E00-\u9FFF]/.test(lowerText);
 
   for (const term of terms) {
     if (term.includes(' ')) {
-      // Multi-word phrase
       if (lowerText.includes(term)) {
         found.push(term);
       }
       continue;
     }
 
-    // For non-Latin scripts, use simple substring matching
+    // For non-Latin scripts, use simple matching
     if (hasNonLatinChars) {
       if (lowerText.includes(term)) {
         found.push(term);
@@ -360,7 +308,7 @@ function findTerms(lowerText: string, words: string[], terms: string[]): string[
       continue;
     }
 
-    // Only match COMPLETE WORDS using word boundaries (not partial matches like "off" in "doff")
+    // Match complete words
     try {
       const regex = new RegExp(`\\b${term}\\b`, 'i');
       if (regex.test(lowerText)) {
@@ -374,49 +322,34 @@ function findTerms(lowerText: string, words: string[], terms: string[]): string[
   return [...new Set(found)];
 }
 
-export class CyberbullyingDetector {
-  private config: DetectionConfig;
-
-  constructor(config: Partial<DetectionConfig> = {}) {
+class CyberbullyingDetector {
+  constructor(config = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  async analyzeContent(content: string): Promise<CyberbullyingResult> {
-    // Detect language and translate to English for analysis
-    // This allows detection in ANY language
+  async analyzeContent(content) {
+    // Detect language and translate for analysis
     const { language, translatedText, isTranslated } = await detectAndTranslate(content);
     console.log(`🌐 Detected language: ${language}, translated: ${isTranslated}`);
     
-    // Analyze the translated content for cyberbullying
-    return this.analyzeContentCore(content, translatedText, language);
-  }
-
-  analyzeContentSync(content: string): CyberbullyingResult {
-    const detectedLang = detectLanguageSync(content);
-    return this.analyzeContentCore(content, content, detectedLang);
-  }
-
-  private analyzeContentCore(
-    originalContent: string,
-    analysisContent: string,
-    detectedLang: string
-  ): CyberbullyingResult {
+    // Analyze the translated (or original) text
+    const analysisContent = translatedText || content;
     const lowerContent = analysisContent.toLowerCase();
     const words = lowerContent.split(/\s+/).filter(Boolean);
-
-    const lowerOriginal = originalContent.toLowerCase();
+    
+    // Also analyze the original content for non-English languages
+    const lowerOriginal = content.toLowerCase();
     const originalWords = lowerOriginal.split(/\s+/).filter(Boolean);
-
-    const categories: string[] = [];
+    
+    const categories = [];
     let severityScore = 0;
     let confidence = 0;
-    const detectedWords: string[] = [];
+    const detectedWords = [];
 
-    // Check slurs
+    // Check for slurs (check both translated and original for non-English)
     const foundSlurs = findTerms(lowerContent, words, this.config.slurs);
-    const foundOriginalSlurs = detectedLang !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.slurs) : [];
+    const foundOriginalSlurs = language !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.slurs) : [];
     const allFoundSlurs = [...new Set([...foundSlurs, ...foundOriginalSlurs])];
-
     if (allFoundSlurs.length > 0) {
       categories.push('slurs');
       severityScore += 3;
@@ -424,11 +357,10 @@ export class CyberbullyingDetector {
       detectedWords.push(...allFoundSlurs);
     }
 
-    // Check threats
+    // Check for threats (check both translated and original for non-English)
     const foundThreats = findTerms(lowerContent, words, this.config.threatKeywords);
-    const foundOriginalThreats = detectedLang !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.threatKeywords) : [];
+    const foundOriginalThreats = language !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.threatKeywords) : [];
     const allFoundThreats = [...new Set([...foundThreats, ...foundOriginalThreats])];
-
     if (allFoundThreats.length > 0) {
       categories.push('threats');
       severityScore += 2;
@@ -436,11 +368,10 @@ export class CyberbullyingDetector {
       detectedWords.push(...allFoundThreats);
     }
 
-    // Check hate speech
+    // Check for hate speech (check both translated and original for non-English)
     const foundHateSpeech = findTerms(lowerContent, words, this.config.hateSpeechTerms);
-    const foundOriginalHateSpeech = detectedLang !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.hateSpeechTerms) : [];
+    const foundOriginalHateSpeech = language !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.hateSpeechTerms) : [];
     const allFoundHateSpeech = [...new Set([...foundHateSpeech, ...foundOriginalHateSpeech])];
-
     if (allFoundHateSpeech.length > 0) {
       categories.push('hate_speech');
       severityScore += 2;
@@ -448,11 +379,10 @@ export class CyberbullyingDetector {
       detectedWords.push(...allFoundHateSpeech);
     }
 
-    // Check offensive language
+    // Check for offensive words (check both translated and original for non-English)
     const foundOffensive = findTerms(lowerContent, words, this.config.offensiveWords);
-    const foundOriginalOffensive = detectedLang !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.offensiveWords) : [];
+    const foundOriginalOffensive = language !== 'eng' ? findTerms(lowerOriginal, originalWords, this.config.offensiveWords) : [];
     const allFoundOffensive = [...new Set([...foundOffensive, ...foundOriginalOffensive])];
-
     if (allFoundOffensive.length > 0) {
       categories.push('offensive_language');
       severityScore += 1;
@@ -460,9 +390,9 @@ export class CyberbullyingDetector {
       detectedWords.push(...allFoundOffensive);
     }
 
-    // Check harassment patterns
+    // Check harassment patterns (check both translated and original content)
     const foundHarassment = this.config.harassmentPatterns.filter(pattern =>
-      testPattern(pattern, analysisContent) || testPattern(pattern, originalContent)
+      testPattern(pattern, analysisContent) || testPattern(pattern, content)
     );
     if (foundHarassment.length > 0) {
       categories.push('harassment');
@@ -470,11 +400,11 @@ export class CyberbullyingDetector {
       confidence += 0.8;
     }
 
+    // Check universal patterns (check both translated and original content)
     if (this.config.universalPatterns) {
       const foundUniversal = this.config.universalPatterns.filter(pattern =>
-        testPattern(pattern, originalContent)
+        testPattern(pattern, analysisContent) || testPattern(pattern, content)
       );
-
       if (foundUniversal.length > 0) {
         categories.push('universal_patterns');
         severityScore += 1;
@@ -482,7 +412,7 @@ export class CyberbullyingDetector {
       }
     }
 
-    let severity: 'low' | 'medium' | 'high' | 'none' = computeSeverity(severityScore);
+    let severity = computeSeverity(severityScore);
 
     if (categories.length > 1) {
       confidence = Math.min(confidence + 0.2, 1.0);
@@ -496,7 +426,7 @@ export class CyberbullyingDetector {
       severity = computeSeverity(severityScore);
     }
 
-    // Adjust severity if offensive words found
+    // Adjust severity - use combined offensive words
     if (allFoundOffensive.length > 0 && categories.length === 1 && severity === 'low') {
       severity = 'medium';
       confidence += 0.3;
@@ -515,22 +445,21 @@ export class CyberbullyingDetector {
       severity,
       categories,
       confidence: Math.min(confidence, 1.0),
-      detectedLanguage: detectedLang,
+      detectedLanguage: language,
       detectedWords: [...new Set(detectedWords)]
     };
   }
 
-  shouldHideContent(result: CyberbullyingResult): boolean {
-    // More sensitive - hide any detected bullying
+  // More sensitive - hide any detected bullying
+  shouldHideContent(result) {
     return result.severity !== 'none';
   }
 
-  shouldFlagForReview(result: CyberbullyingResult): boolean {
-    // Flag anything that might be bullying
+  shouldFlagForReview(result) {
     return result.severity !== 'none' || result.confidence > 0.5;
   }
 
-  getModerationAction(result: CyberbullyingResult): 'hide' | 'flag' | 'none' {
+  getModerationAction(result) {
     // Hide any detected bullying
     if (result.severity !== 'none') {
       return 'hide';
@@ -540,76 +469,15 @@ export class CyberbullyingDetector {
 }
 
 // Utility function for easy integration
-export async function detectCyberbullying(content: string, config?: Partial<DetectionConfig>): Promise<CyberbullyingResult> {
-  console.log(`🔍 ============================================`);
+async function detectCyberbullying(content, config) {
   console.log(`🔍 Analyzing content for cyberbullying: "${content}"`);
-  console.log(`🔍 Content length: ${content.length} characters`);
-  
   const detector = new CyberbullyingDetector(config);
   const result = await detector.analyzeContent(content);
-  
-  console.log(`🔍 ============================================`);
-  console.log(`🔍 DETECTION RESULT:`);
-  console.log(`🔍 - isCyberbullying: ${result.isCyberbullying}`);
-  console.log(`🔍 - severity: ${result.severity}`);
-  console.log(`🔍 - categories: ${result.categories.join(', ')}`);
-  console.log(`🔍 - confidence: ${result.confidence}`);
-  console.log(`🔍 - detectedLanguage: ${result.detectedLanguage}`);
-  console.log(`🔍 - detectedWords: ${result.detectedWords?.join(', ')}`);
-  console.log(`🔍 ============================================`);
-  
+  console.log(`📊 Detection result:`, result);
   return result;
 }
 
-// Enhanced detection with AI integration
-export async function detectCyberbullyingEnhanced(
-  content: string,
-  config?: Partial<DetectionConfig>
-): Promise<{
-  ruleBased: CyberbullyingResult;
-  aiEnhanced?: import('./aiCyberbullyingModel').PredictionResult;
-  final: CyberbullyingResult;
-}> {
-  const ruleBased = await detectCyberbullying(content, config);
-
-  try {
-    const { detectCyberbullyingAI } = await import('./aiCyberbullyingModel');
-    const aiEnhanced = await detectCyberbullyingAI(content);
-
-    const final: CyberbullyingResult = {
-      isCyberbullying: ruleBased.isCyberbullying || aiEnhanced.isCyberbullying,
-      severity: combineSeverity(ruleBased.severity, aiEnhanced.severity),
-      categories: [...new Set([...ruleBased.categories, ...aiEnhanced.categories])],
-      confidence: Math.max(ruleBased.confidence, aiEnhanced.confidence)
-    };
-
-    return { ruleBased, aiEnhanced, final };
-  } catch (error) {
-    console.warn('AI enhancement not available, using rule-based only:', error);
-    return { ruleBased, final: ruleBased };
-  }
-}
-
-function combineSeverity(ruleSeverity: string, aiSeverity: string): 'low' | 'medium' | 'high' | 'none' {
-  const severityLevels = { none: 0, low: 1, medium: 2, high: 3 };
-
-  const ruleLevel = severityLevels[ruleSeverity as keyof typeof severityLevels] || 0;
-  const aiLevel = severityLevels[aiSeverity as keyof typeof severityLevels] || 0;
-
-  const combinedLevel = Math.max(ruleLevel, aiLevel);
-  const severityMap = ['none', 'low', 'medium', 'high'];
-
-  return severityMap[combinedLevel] as 'low' | 'medium' | 'high' | 'none';
-}
-
-export async function shouldHidePost(content: string): Promise<boolean> {
-  const detector = new CyberbullyingDetector();
-  const result = await detector.analyzeContent(content);
-  return detector.shouldHideContent(result);
-}
-
-export async function getPostModerationAction(content: string): Promise<'hide' | 'flag' | 'none'> {
-  const detector = new CyberbullyingDetector();
-  const result = await detector.analyzeContent(content);
-  return detector.getModerationAction(result);
-}
+module.exports = {
+  CyberbullyingDetector,
+  detectCyberbullying
+};

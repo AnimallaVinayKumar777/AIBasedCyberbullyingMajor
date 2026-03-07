@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { sqliteDB, DatabasePost } from '@/utils/sqliteDatabase';
 import { Post, User, Notification, Comment, mockPosts, mockUsers, mockNotifications } from '@/data/mockData';
 import { ModeratedPost, postModerationService } from '@/utils/postModeration';
@@ -15,18 +15,20 @@ interface AppState {
 }
 
 interface AppContextType extends AppState {
-  addPost: (content: string, image?: string) => void;
-  toggleLike: (postId: string) => void;
-  toggleRepost: (postId: string) => void;
+  addPost: (content: string, image?: string) => Promise<void>;
+  editPost: (postId: string, newContent: string) => Promise<void>;
+  toggleLike: (postId: string) => Promise<void>;
+  toggleRepost: (postId: string) => Promise<void>;
   toggleFollow: (userId: string) => void;
-  addComment: (postId: string, content: string) => void;
+  addComment: (postId: string, content: string) => Promise<void>;
   markNotificationAsRead: (notificationId: string) => void;
   searchUsers: (query: string) => User[];
   searchPosts: (query: string) => ModeratedPost[];
-  clearAllPosts: () => void;
+  clearAllPosts: () => Promise<void>;
   exportPostsData: () => string;
   addUser: (user: User) => Promise<void>;
   getAllUsers: () => Promise<User[]>;
+  revealPostContent: (postId: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -42,40 +44,106 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const dbPosts = await sqliteDB.getAllPosts();
       console.log('🔍 Loading posts from database:', dbPosts.length, 'posts found');
       console.log('👤 Current user when loading:', currentUser?.name || 'No user');
+      console.log('📊 Database posts authors:', dbPosts.map(p => ({ author: p.author_name, id: p.author_id })).slice(0, 5)); // First 5
+      console.log('🔍 All database posts details:', dbPosts.map(p => `${p.author_name} (${p.author_id}): ${p.content.substring(0, 30)}...`));
 
       if (dbPosts.length > 0) {
-        // Convert database posts to ModeratedPost format
-        const processedPosts: ModeratedPost[] = dbPosts.map((dbPost): ModeratedPost => ({
-          id: dbPost.id,
-          author: {
-            id: dbPost.author_id,
-            name: dbPost.author_name,
-            handle: dbPost.author_handle,
-            avatar: dbPost.author_avatar,
-            followers: 0, // SQLite doesn't store follower counts for posts
-            following: 0
-          },
-          content: dbPost.content,
-          image: dbPost.image,
-          timestamp: new Date(dbPost.timestamp),
-          likes: dbPost.likes,
-          comments: dbPost.comments,
-          reposts: dbPost.reposts,
-          isLiked: false, // Will be set based on user interactions
-          cyberbullyingResult: {
-            isCyberbullying: dbPost.is_cyberbullying || false,
-            severity: (dbPost.severity as 'low' | 'medium' | 'high') || 'low',
-            categories: dbPost.categories ? JSON.parse(dbPost.categories) : [],
-            confidence: 0.8
-          },
-          moderationAction: (dbPost.moderation_action as 'hide' | 'flag' | 'none') || 'none',
-          isHidden: dbPost.is_hidden || false,
-          isBully: dbPost.is_bully || false,
-          isReported: dbPost.is_reported || false
-        }));
+        console.log('dbPosts length:', dbPosts.length);
+        console.log('dbPosts sample:', dbPosts.slice(0,3));
+        console.log('dbPosts has undefined:', dbPosts.some(p => p === undefined));
 
-        console.log('✅ Successfully loaded and processed posts:', processedPosts.length);
-        return processedPosts;
+        // Transform posts from MongoDB API: map '_id' to 'id' and other field mappings
+        const transformedPosts = dbPosts.map((post, index) => {
+          const newId = post.id || post._id?.toString();
+          console.log(`🔄 Transforming post ${index} in loadPosts: original id=${post.id}, _id=${post._id}, newId=${newId}, categories=${JSON.stringify(post.categories)}, cyberbullying_categories=${JSON.stringify(post.cyberbullying_categories)}`);
+          return {
+            ...post,
+            id: newId, // Use id if present (Mongoose getter), else _id.toString()
+            reposts: post.shares || post.reposts || 0, // Map shares to reposts
+            image: post.media_urls || post.image, // Map media_urls to image
+            is_cyberbullying: post.cyberbullying_detected || post.is_cyberbullying,
+            severity: post.cyberbullying_severity || post.severity,
+            categories: post.cyberbullying_categories || post.categories,
+          };
+        });
+
+        // Convert database posts to ModeratedPost format
+        const processedPosts: ModeratedPost[] = transformedPosts.map((dbPost, index): ModeratedPost | undefined => {
+          console.log(`🔍 Processing dbPost ${index} in loadPosts: id=${dbPost.id}, _id=${dbPost._id}, categories=${dbPost.categories}`);
+          if (!dbPost || !dbPost.id) {
+            console.error('Invalid dbPost at index', index, 'dbPost:', dbPost);
+            return undefined;
+          }
+          const isBully = dbPost.is_bully ?? dbPost.cyberbullying_detected ?? false;
+          console.log(`🔄 Loading post ${dbPost.id} from DB: cyberbullying_detected=${dbPost.cyberbullying_detected}, isBully=${isBully}, content="${dbPost.content?.substring(0, 50)}..."`);
+          let parsedCategories = [];
+          if (Array.isArray(dbPost.categories)) {
+            parsedCategories = dbPost.categories;
+            console.log(`✅ Categories for post ${dbPost.id} is already array:`, parsedCategories);
+          } else if (typeof dbPost.categories === 'string') {
+            try {
+              parsedCategories = JSON.parse(dbPost.categories);
+              console.log(`✅ Parsed categories for post ${dbPost.id}:`, parsedCategories);
+            } catch (error) {
+              console.error(`❌ JSON.parse error for post ${dbPost.id} categories:`, dbPost.categories, error);
+              parsedCategories = [];
+            }
+          } else {
+            parsedCategories = [];
+            console.log(`⚠️ Categories for post ${dbPost.id} is neither array nor string:`, dbPost.categories);
+          }
+          
+          // Create a basic ModeratedPost from the database
+          return {
+            id: dbPost.id,
+            author: {
+              id: dbPost.author_id,
+              name: dbPost.author_name || 'Unknown',
+              handle: dbPost.author_handle || '@unknown',
+              email: dbPost.author_email || '',
+              avatar: dbPost.author_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dbPost.author_id}`,
+              followers: 0, // SQLite doesn't store follower counts for posts
+              following: 0
+            },
+            content: dbPost.content,
+            image: dbPost.image,
+            timestamp: new Date(dbPost.timestamp),
+            likes: dbPost.likes,
+            comments: dbPost.comments,
+            reposts: dbPost.reposts,
+            isLiked: false, // Will be set based on user interactions
+            cyberbullyingResult: {
+              isCyberbullying: dbPost.is_cyberbullying || false,
+              severity: (dbPost.severity as 'low' | 'medium' | 'high') || 'low',
+              categories: parsedCategories,
+              confidence: 0.8
+            },
+            moderationAction: (dbPost.moderation_action as 'hide' | 'flag' | 'none') || 'none',
+            isHidden: dbPost.is_hidden || false,
+            isBully,
+            isReported: dbPost.is_reported || false,
+            isAutoDeleted: dbPost.is_bully ?? dbPost.is_cyberbullying ?? false
+          };
+        });
+
+        const filteredPosts = processedPosts.filter(p => p !== undefined) as ModeratedPost[];
+        
+        // Filter out bully posts and hidden posts from UI
+        const visiblePosts = filteredPosts.filter(post => {
+          // Skip if post is bully or hidden
+          if (post.isBully || post.isHidden) {
+            console.log(`🚫 Filtering out bully/hidden post: ${post.id} - isBully=${post.isBully}, isHidden=${post.isHidden}`);
+            return false;
+          }
+          return true;
+        });
+        
+        console.log('✅ Posts after filtering out bullies:', visiblePosts.length, 'out of', filteredPosts.length);
+        
+        // Don't re-process through moderation service - use stored results from database
+        // This prevents previously-OK posts from being incorrectly flagged as bully
+        console.log('✅ Successfully loaded posts from database:', visiblePosts.length);
+        return visiblePosts;
       } else {
         console.log('📋 No saved posts found, using mock data');
       }
@@ -105,6 +173,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
 
+  // Ref to track recent mutations and prevent sync loops
+  const lastMutationTime = useRef<number>(0);
+  const MUTATION_COOLDOWN = 2000; // 2 seconds cooldown after mutations
+
+  // Helper to get the actual post ID (handles both 'id' and '_id' fields)
+  const getPostId = (post: any): string | undefined => {
+    return post.id || post._id?.toString();
+  };
+
   // Load posts and users from SQLite database on component mount and user change
   useEffect(() => {
     const loadInitialData = async () => {
@@ -130,6 +207,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             id: dbUser.id,
             name: dbUser.name,
             handle: dbUser.handle,
+            email: dbUser.email,
             avatar: dbUser.avatar,
             bio: dbUser.bio,
             followers: dbUser.followers,
@@ -156,64 +234,122 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Set up real-time synchronization with SQLite and cross-tab updates
   useEffect(() => {
+    // Skip if we're in cooldown period (prevents loops when we just added/edited a post)
+    if (Date.now() - lastMutationTime.current < MUTATION_COOLDOWN) {
+      return;
+    }
+    
+    // Helper to get the actual post ID (handles both 'id' and '_id' fields)
+    const getPostId = (post: any): string | undefined => {
+      return post.id || post._id?.toString();
+    };
+    
     const checkForUpdates = async () => {
       try {
         await sqliteDB.initialize();
         const currentDbPosts = await sqliteDB.getAllPosts();
 
-        // Check if posts have changed (either count or content)
-        const postsChanged = currentDbPosts.length !== posts.length ||
-          (currentDbPosts.length > 0 && posts.length > 0 &&
-           currentDbPosts[0].id !== posts[0]?.id);
+        // Get first post IDs for comparison
+        const dbFirstId = getPostId(currentDbPosts[0]);
+        const memoryFirstId = getPostId(posts[0]);
+        
+        // Only update if posts actually changed (compare first post ID)
+        const postsChanged = currentDbPosts.length !== posts.length || 
+          (currentDbPosts.length > 0 && posts.length > 0 && dbFirstId !== memoryFirstId);
 
         if (postsChanged) {
           console.log('🔄 Posts changed, updating from database...');
-          console.log('📊 DB posts:', currentDbPosts.length, 'Memory posts:', posts.length);
 
-          const processedPosts: ModeratedPost[] = currentDbPosts.map((dbPost): ModeratedPost => ({
-            id: dbPost.id,
-            author: {
-              id: dbPost.author_id,
-              name: dbPost.author_name,
-              handle: dbPost.author_handle,
-              avatar: dbPost.author_avatar,
-              followers: 0,
-              following: 0
-            },
-            content: dbPost.content,
-            image: dbPost.image,
-            timestamp: new Date(dbPost.timestamp),
-            likes: dbPost.likes,
-            comments: dbPost.comments,
-            reposts: dbPost.reposts,
-            isLiked: false,
-            cyberbullyingResult: {
-              isCyberbullying: dbPost.is_cyberbullying || false,
-              severity: (dbPost.severity as 'low' | 'medium' | 'high') || 'low',
-              categories: dbPost.categories ? JSON.parse(dbPost.categories) : [],
-              confidence: 0.8
-            },
-            moderationAction: (dbPost.moderation_action as 'hide' | 'flag' | 'none') || 'none',
-            isHidden: dbPost.is_hidden || false,
-            isBully: dbPost.is_bully || false,
-            isReported: dbPost.is_reported || false
-          }));
+          // Transform posts from MongoDB API: map '_id' to 'id' and other field mappings
+          const transformedPosts = currentDbPosts.map((post) => {
+            const newId = getPostId(post);
+            return {
+              ...post,
+              id: newId,
+              reposts: post.shares || post.reposts || 0,
+              image: post.media_urls || post.image,
+              is_cyberbullying: post.cyberbullying_detected || post.is_cyberbullying,
+              severity: post.cyberbullying_severity || post.severity,
+              categories: post.cyberbullying_categories || post.categories,
+            };
+          });
 
-          setPosts(processedPosts);
-          console.log('✅ Posts synchronized from database:', processedPosts.length);
+          // Convert database posts to ModeratedPost format and re-process through moderation service
+          const processedPosts: ModeratedPost[] = transformedPosts.map((dbPost): ModeratedPost | undefined => {
+            if (!dbPost || !dbPost.id) return undefined;
+            
+            // Handle categories - MongoDB returns arrays, localStorage returns JSON strings
+            let parsedCategories: string[] = [];
+            if (Array.isArray(dbPost.categories)) {
+              parsedCategories = dbPost.categories;
+            } else if (typeof dbPost.categories === 'string') {
+              try {
+                parsedCategories = JSON.parse(dbPost.categories);
+              } catch {
+                parsedCategories = [];
+              }
+            }
+            
+            return {
+              id: dbPost.id,
+              author: {
+                id: dbPost.author_id,
+                name: dbPost.author_name || 'Unknown',
+                handle: dbPost.author_handle || '@unknown',
+                email: dbPost.author_email || '',
+                avatar: dbPost.author_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dbPost.author_id}`,
+                followers: 0,
+                following: 0
+              },
+              content: dbPost.content,
+              image: dbPost.image,
+              timestamp: new Date(dbPost.timestamp),
+              likes: dbPost.likes,
+              comments: dbPost.comments,
+              reposts: dbPost.reposts,
+              isLiked: false,
+              cyberbullyingResult: {
+                isCyberbullying: dbPost.is_cyberbullying || false,
+                severity: (dbPost.severity as 'low' | 'medium' | 'high') || 'low',
+                categories: parsedCategories,
+                confidence: 0.8
+              },
+              moderationAction: (dbPost.moderation_action as 'hide' | 'flag' | 'none') || 'none',
+              isHidden: dbPost.is_hidden || false,
+              isBully: dbPost.is_bully ?? dbPost.cyberbullying_detected ?? false,
+              isReported: dbPost.is_reported || false,
+              isAutoDeleted: dbPost.is_bully ?? dbPost.cyberbullying_detected ?? false
+            };
+          });
+
+          const filteredPosts = processedPosts.filter(p => p !== undefined) as ModeratedPost[];
+          
+          // Filter out bully posts and hidden posts from UI
+          const visiblePosts = filteredPosts.filter(post => {
+            // Skip if post is bully or hidden
+            if (post.isBully || post.isHidden) {
+              return false;
+            }
+            return true;
+          });
+          
+          // Don't re-process through moderation service - use stored results from database
+          // This prevents previously-OK posts from being incorrectly flagged as bully
+          setPosts(visiblePosts);
+          console.log('✅ Posts synchronized from database:', visiblePosts.length, 'out of', filteredPosts.length);
         }
       } catch (error) {
         console.error('❌ Error checking for DB updates:', error);
       }
     };
 
-    // Check for updates every 1 second for better responsiveness
-    const interval = setInterval(checkForUpdates, 1000);
+    // Check for updates every 30 seconds
+    const interval = setInterval(checkForUpdates, 30000);
 
-    // Also listen for cross-tab storage events
+    // Listen for cross-tab storage events
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'chirp_posts' || e.key === 'chirp_db_updated') {
-        console.log('🔄 Cross-tab update detected, refreshing posts...');
+        console.log('🔄 Cross-tab update detected');
         checkForUpdates();
       }
     };
@@ -230,94 +366,215 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // This useEffect is no longer needed as we're saving immediately
 
   const addPost = async (content: string, image?: string) => {
+    // Mark that we just mutated the data - sync should skip for a bit
+    lastMutationTime.current = Date.now();
+    
+    if (!authUser) return;
+
+    try {
+      const newPost: Post = {
+        id: `${authUser.id}_${Date.now()}`,
+        author: {
+          ...authUser,
+          avatar: authUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.name}`
+        },
+        content,
+        image,
+        timestamp: new Date(),
+        likes: 0,
+        comments: 0,
+        reposts: 0,
+        isLiked: false,
+      };
+
+      console.log('📝 ====== Creating new post ======');
+      console.log('📝 Author object:', JSON.stringify(newPost.author, null, 2));
+      console.log('📝 Author email:', newPost.author.email);
+      console.log('📝 Author name:', newPost.author.name);
+      console.log('📝 Author handle:', newPost.author.handle);
+
+      // Process through moderation service
+      let moderatedPost = await postModerationService.processPost(newPost);
+      console.log('🛡️ Moderation result for new post:', {
+        isBully: moderatedPost.isBully,
+        isHidden: moderatedPost.isHidden,
+        moderationAction: moderatedPost.moderationAction,
+        isAutoDeleted: moderatedPost.isAutoDeleted,
+        severity: moderatedPost.cyberbullyingResult?.severity,
+        categories: moderatedPost.cyberbullyingResult?.categories
+      });
+
+      // For bully posts, show in UI first (blurred), then auto-delete after delay
+      if (moderatedPost.isBully) {
+        console.log('⚠️ Bully post detected - showing blurred in UI, will auto-delete after delay');
+        
+        // Add to UI first (with blur/OK badge)
+        setPosts(prev => [moderatedPost, ...prev]);
+        console.log('✅ Bully post added to UI (will be auto-deleted):', moderatedPost.id);
+        
+        // Save to database with the flag
+        try {
+          await sqliteDB.initialize();
+          await sqliteDB.insertPost({
+            id: moderatedPost.id,
+            author_id: moderatedPost.author.id,
+            author_name: moderatedPost.author.name,
+            author_handle: moderatedPost.author.handle,
+            author_avatar: moderatedPost.author.avatar,
+            author_email: moderatedPost.author.email || '',
+            content: moderatedPost.content,
+            image: moderatedPost.image,
+            timestamp: moderatedPost.timestamp.toISOString(),
+            likes: moderatedPost.likes,
+            comments: moderatedPost.comments,
+            reposts: moderatedPost.reposts,
+            is_cyberbullying: moderatedPost.cyberbullyingResult?.isCyberbullying || false,
+            severity: moderatedPost.cyberbullyingResult?.severity || 'low',
+            categories: JSON.stringify(moderatedPost.cyberbullyingResult?.categories || []),
+            moderation_action: moderatedPost.moderationAction || 'none',
+            is_hidden: moderatedPost.isHidden || false,
+            is_bully: moderatedPost.isBully || false,
+            is_reported: moderatedPost.isReported || false
+          });
+          console.log('💾 Bully post saved to database');
+        } catch (dbError) {
+          console.warn('⚠️ Database save failed:', dbError);
+        }
+        
+        // Auto-delete from UI after 5 seconds
+        setTimeout(() => {
+          setPosts(prev => prev.filter(p => p.id !== moderatedPost.id));
+          console.log('🗑️ Bully post auto-deleted from UI:', moderatedPost.id);
+        }, 5000);
+        
+        return; // Post is added to UI, will be auto-deleted
+      }
+
+      // Add to posts list (for non-bully posts)
+      setPosts(prev => [moderatedPost, ...prev]);
+      console.log('✅ Post added to UI:', moderatedPost.id);
+
+      // Try to save to database (non-blocking, errors handled gracefully)
+      // ALL posts are saved - including bully posts (they're saved with is_bully flag)
+      try {
+        await sqliteDB.initialize();
+        await sqliteDB.insertPost({
+          id: moderatedPost.id,
+          author_id: moderatedPost.author.id,
+          author_name: moderatedPost.author.name,
+          author_handle: moderatedPost.author.handle,
+          author_avatar: moderatedPost.author.avatar,
+          author_email: moderatedPost.author.email || '',
+          content: moderatedPost.content,
+          image: moderatedPost.image,
+          timestamp: moderatedPost.timestamp.toISOString(),
+          likes: moderatedPost.likes,
+          comments: moderatedPost.comments,
+          reposts: moderatedPost.reposts,
+          is_cyberbullying: moderatedPost.cyberbullyingResult?.isCyberbullying || false,
+          severity: moderatedPost.cyberbullyingResult?.severity || 'low',
+          categories: JSON.stringify(moderatedPost.cyberbullyingResult?.categories || []),
+          moderation_action: moderatedPost.moderationAction || 'none',
+          is_hidden: moderatedPost.isHidden || false,
+          is_bully: moderatedPost.isBully || false,
+          is_reported: moderatedPost.isReported || false
+        });
+        console.log('💾 Post saved to database');
+      } catch (dbError) {
+        // Database save failed, but post is already in UI - just log warning
+        console.warn('⚠️ Database save failed (post still visible in UI):', dbError);
+      }
+    } catch (error) {
+      console.error('Error adding post:', error);
+    }
+  };
+  const editPost = async (postId: string, newContent: string) => {
+    // Mark that we just mutated the data - sync should skip for a bit
+    lastMutationTime.current = Date.now();
+    
     if (!authUser) {
-      console.log('❌ Cannot add post: No authenticated user');
+      console.log('❌ Cannot edit post: No authenticated user');
       return;
     }
 
-    console.log('📝 Adding new post for user:', authUser.name, 'Content:', content.substring(0, 50) + '...');
+    console.log('✏️ Editing post:', postId, 'New content:', newContent.substring(0, 50) + '...');
 
-    const newPost: Post = {
-      id: `${authUser.id}_${Date.now()}`, // Make ID unique per user
-      author: {
-        ...authUser,
-        // Ensure avatar is set
-        avatar: authUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.name}`
-      },
-      content,
-      image,
-      timestamp: new Date(),
-      likes: 0,
-      comments: 0,
-      reposts: 0,
-      isLiked: false,
+    // Find the post to edit
+    const postToEdit = posts.find(p => p.id === postId);
+    if (!postToEdit) {
+      console.error('❌ Post not found for editing:', postId);
+      return;
+    }
+
+    // Create updated post with new content
+    const updatedPost: Post = {
+      ...postToEdit,
+      content: newContent,
     };
 
-    console.log('🆕 Created new post object:', newPost);
+    // Re-process through moderation service
+    const reModeratedPost = await postModerationService.processPost(updatedPost);
+    console.log('🛡️ Re-moderated post:', reModeratedPost);
 
-    // Process through moderation service
-    let moderatedPost = postModerationService.processPost(newPost);
-    console.log('🛡️ Moderated post:', moderatedPost);
+    // For edited posts, clear the bully status
+    const finalPost = {
+      ...reModeratedPost,
+      isBully: false,
+      isAutoDeleted: false
+    };
 
-    // Add to beginning of posts array and process with timers
-    const updatedPosts = [moderatedPost, ...posts];
-    console.log('📋 Updated posts count:', updatedPosts.length);
+    // Update posts array directly
+    const updatedPosts = posts.map(post =>
+      post.id === postId ? finalPost : post
+    );
+    setPosts(updatedPosts);
+    
+    console.log('✅ Post edit completed successfully');
 
-    const postsWithTimers = postModerationService.processPostsWithTimers(updatedPosts);
-    console.log('⏰ Posts with timers count:', postsWithTimers.length);
-
-    setPosts(postsWithTimers);
-
-    // Save to SQLite database
+    // Update in SQLite database
     try {
       await sqliteDB.initialize();
-      console.log('💾 Saving post to SQLite database...');
+      console.log('💾 Updating post in SQLite database...');
 
       const postData = {
-        id: moderatedPost.id,
-        author_id: moderatedPost.author.id,
-        author_name: moderatedPost.author.name,
-        author_handle: moderatedPost.author.handle,
-        author_avatar: moderatedPost.author.avatar,
-        content: moderatedPost.content,
-        image: moderatedPost.image,
-        timestamp: moderatedPost.timestamp.toISOString(),
-        likes: moderatedPost.likes,
-        comments: moderatedPost.comments,
-        reposts: moderatedPost.reposts,
-        is_cyberbullying: moderatedPost.cyberbullyingResult?.isCyberbullying || false,
-        severity: moderatedPost.cyberbullyingResult?.severity || 'low',
-        categories: JSON.stringify(moderatedPost.cyberbullyingResult?.categories || []),
-        moderation_action: moderatedPost.moderationAction || 'none',
-        is_hidden: moderatedPost.isHidden || false,
-        is_bully: moderatedPost.isBully || false,
-        is_reported: moderatedPost.isReported || false
+        id: reModeratedPost.id,
+        author_id: reModeratedPost.author.id,
+        author_name: reModeratedPost.author.name,
+        author_handle: reModeratedPost.author.handle,
+        author_avatar: reModeratedPost.author.avatar,
+        author_email: reModeratedPost.author.email || '',
+        content: newContent, // Use the actual new content, not reModeratedPost.content
+        image: reModeratedPost.image,
+        timestamp: reModeratedPost.timestamp.toISOString(),
+        likes: reModeratedPost.likes,
+        comments: reModeratedPost.comments,
+        reposts: reModeratedPost.reposts,
+        is_cyberbullying: false, // Clear cyberbullying flag after edit
+        severity: 'low',
+        categories: '[]',
+        moderation_action: 'none',
+        is_hidden: false,
+        is_bully: false, // Clear bully flag after edit
+        is_reported: false
       };
 
-      console.log('📝 Post data to save:', postData);
-      sqliteDB.insertPost(postData);
+      sqliteDB.updatePost(postData);
 
-      // Verify the post was saved
-      const savedPosts = await sqliteDB.getAllPosts();
-      const savedPost = savedPosts.find(p => p.id === moderatedPost.id);
-
-      if (savedPost) {
-        console.log('✅ Post verified in database:', savedPost.content?.substring(0, 50) + '...');
-        // Trigger cross-tab update notification
-        localStorage.setItem('chirp_db_updated', Date.now().toString());
-        console.log('🔄 Cross-tab update notification sent');
-      } else {
-        console.error('❌ Post not found in database after save!');
-      }
-
-      console.log('✅ Post saved to SQLite database by:', authUser.name);
-      console.log('🔄 Post should now be visible to all users');
+      console.log('✅ Post updated in SQLite database');
+      
+      // Trigger immediate cross-tab update notification
+      localStorage.setItem('chirp_db_updated', Date.now().toString());
+      
+      // Force immediate refresh from database to get updated bully status
+      const refreshedPosts = await loadPosts();
+      setPosts(refreshedPosts);
+      console.log('✅ Post edit completed and posts refreshed from database');
     } catch (error) {
-      console.error('❌ Error saving post to SQLite database:', error);
+      console.error('❌ Error updating post in SQLite database:', error);
     }
   };
 
-  const toggleLike = (postId: string) => {
+  const toggleLike = async (postId: string) => {
     const newLikedPosts = new Set(likedPosts);
     if (newLikedPosts.has(postId)) {
       newLikedPosts.delete(postId);
@@ -337,12 +594,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return post;
     });
 
-    // Process with timers for bully posts
-    const postsWithTimers = postModerationService.processPostsWithTimers(updatedPosts);
-    setPosts(postsWithTimers);
+    // Update posts directly without full re-processing
+    setPosts(updatedPosts);
   };
 
-  const toggleRepost = (postId: string) => {
+  const toggleRepost = async (postId: string) => {
     const newRepostedPosts = new Set(repostedPosts);
     if (newRepostedPosts.has(postId)) {
       newRepostedPosts.delete(postId);
@@ -361,9 +617,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return post;
     });
 
-    // Process with timers for bully posts
-    const postsWithTimers = postModerationService.processPostsWithTimers(updatedPosts);
-    setPosts(postsWithTimers);
+    // Update posts directly without full re-processing
+    setPosts(updatedPosts);
+  };
+
+  const revealPostContent = async (postId: string) => {
+    const updatedPosts = posts.map(post => {
+      if (post.id === postId) {
+        return {
+          ...post,
+          isHidden: false,
+          isBully: false, // Clear bully flag to allow viewing
+          isAutoDeleted: false
+        } as ModeratedPost;
+      }
+      return post;
+    });
+
+    // Update posts directly without full re-processing
+    setPosts(updatedPosts);
+    
+    return true;
   };
 
   const toggleFollow = (userId: string) => {
@@ -376,7 +650,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setFollowedUsers(newFollowedUsers);
   };
 
-  const addComment = (postId: string, content: string) => {
+  const addComment = async (postId: string, content: string) => {
     if (!authUser) return;
 
     const updatedPosts = posts.map(post => {
@@ -396,9 +670,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return post;
     });
 
-    // Process with timers for bully posts
-    const postsWithTimers = postModerationService.processPostsWithTimers(updatedPosts);
-    setPosts(postsWithTimers);
+    // Update posts directly without full re-processing
+    setPosts(updatedPosts);
   };
 
   const markNotificationAsRead = (notificationId: string) => {
@@ -424,7 +697,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         id: user.id,
         name: user.name,
         handle: user.handle,
-        email: `${user.handle.replace('@', '')}@example.com`, // Generate email from handle
+        email: user.email || `${user.handle.replace('@', '')}@example.com`, // Use user's actual email if available
         avatar: user.avatar,
         bio: user.bio,
         followers: user.followers,
@@ -450,6 +723,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         id: dbUser.id,
         name: dbUser.name,
         handle: dbUser.handle,
+        email: dbUser.email,
         avatar: dbUser.avatar,
         bio: dbUser.bio,
         followers: dbUser.followers,
@@ -533,6 +807,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         author_name: 'Repair User',
         author_handle: '@repair',
         author_avatar: 'repair_avatar',
+        author_email: 'repair@example.com',
         content: 'Database repair test post',
         timestamp: new Date().toISOString(),
         likes: 0,
@@ -865,39 +1140,75 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             console.log(`  ${index + 1}. ${post.author_name}: ${post.content?.substring(0, 50)}...`);
           });
 
-          const processedPosts: ModeratedPost[] = dbPosts.map((dbPost): ModeratedPost => ({
-            id: dbPost.id,
-            author: {
-              id: dbPost.author_id,
-              name: dbPost.author_name,
-              handle: dbPost.author_handle,
-              avatar: dbPost.author_avatar,
-              followers: 0,
-              following: 0
-            },
-            content: dbPost.content,
-            image: dbPost.image,
-            timestamp: new Date(dbPost.timestamp),
-            likes: dbPost.likes,
-            comments: dbPost.comments,
-            reposts: dbPost.reposts,
-            isLiked: false,
-            cyberbullyingResult: {
-              isCyberbullying: dbPost.is_cyberbullying || false,
-              severity: (dbPost.severity as 'low' | 'medium' | 'high') || 'low',
-              categories: dbPost.categories ? JSON.parse(dbPost.categories) : [],
-              confidence: 0.8
-            },
-            moderationAction: (dbPost.moderation_action as 'hide' | 'flag' | 'none') || 'none',
-            isHidden: dbPost.is_hidden || false,
-            isBully: dbPost.is_bully || false,
-            isReported: dbPost.is_reported || false
-          }));
+          // Transform posts from MongoDB API: map '_id' to 'id' and other field mappings
+          const transformedPosts = dbPosts.map((post, index) => {
+            const newId = post.id || post._id?.toString();
+            console.log(`🔄 Transforming post ${index} in loadPosts: original id=${post.id}, _id=${post._id}, newId=${newId}, categories=${JSON.stringify(post.categories)}, cyberbullying_categories=${JSON.stringify(post.cyberbullying_categories)}`);
+            return {
+              ...post,
+              id: newId, // Use id if present (Mongoose getter), else _id.toString()
+              reposts: post.shares || post.reposts || 0, // Map shares to reposts
+              image: post.media_urls || post.image, // Map media_urls to image
+              is_cyberbullying: post.cyberbullying_detected || post.is_cyberbullying,
+              severity: post.cyberbullying_severity || post.severity,
+              categories: post.cyberbullying_categories || post.categories,
+            };
+          });
 
-          setPosts(processedPosts);
-          console.log('✅ Force sync completed - posts updated from database');
-          console.log('📋 Memory posts after sync:', processedPosts.length);
-          return processedPosts;
+          const processedPosts: ModeratedPost[] = transformedPosts.map((dbPost): ModeratedPost => {
+            // Create a basic ModeratedPost from the database
+            return {
+              id: dbPost.id,
+              author: {
+                id: dbPost.author_id,
+                name: dbPost.author_name || 'Unknown',
+                handle: dbPost.author_handle || '@unknown',
+                email: dbPost.author_email || '',
+                avatar: dbPost.author_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dbPost.author_id}`,
+                followers: 0,
+                following: 0
+              },
+              content: dbPost.content,
+              image: dbPost.image,
+              timestamp: new Date(dbPost.timestamp),
+              likes: dbPost.likes,
+              comments: dbPost.comments,
+              reposts: dbPost.reposts,
+              isLiked: false,
+              cyberbullyingResult: {
+                isCyberbullying: dbPost.is_cyberbullying || false,
+                severity: (dbPost.severity as 'low' | 'medium' | 'high') || 'low',
+                categories: (() => {
+                  if (Array.isArray(dbPost.categories)) return dbPost.categories;
+                  if (typeof dbPost.categories === 'string') {
+                    try { return JSON.parse(dbPost.categories); } catch { return []; }
+                  }
+                  return [];
+                })(),
+                confidence: 0.8
+              },
+              moderationAction: (dbPost.moderation_action as 'hide' | 'flag' | 'none') || 'none',
+              isHidden: dbPost.is_hidden || false, // Use stored value from database
+              isBully: dbPost.is_bully ?? dbPost.cyberbullying_detected ?? false,
+              isReported: dbPost.is_reported || false,
+              isAutoDeleted: dbPost.is_bully ?? dbPost.is_cyberbullying ?? false
+            };
+          });
+
+          // Don't re-process through moderation service - use stored results from database
+          // This prevents previously-OK posts from being incorrectly flagged as bully
+          
+          // Filter out bully posts and hidden posts from UI
+          const visiblePosts = processedPosts.filter(post => {
+            if (post.isBully || post.isHidden) {
+              return false;
+            }
+            return true;
+          });
+          
+          setPosts(visiblePosts);
+          console.log('✅ Force sync completed - posts loaded from database:', visiblePosts.length, 'out of', processedPosts.length);
+          return visiblePosts;
         } else {
           console.log('📋 No posts in database to sync');
           return [];
@@ -941,6 +1252,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 author_name: post.author?.name || 'Unknown',
                 author_handle: post.author?.handle || '@unknown',
                 author_avatar: post.author?.avatar || 'default_avatar',
+                author_email: post.author?.email || '',
                 content: post.content || '',
                 image: post.image,
                 timestamp: post.timestamp || new Date().toISOString(),
@@ -991,7 +1303,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         console.log('1️⃣ Initializing database...');
         await sqliteDB.initialize();
 
-        console.log('💾 Database mode:', sqliteDB.isUsingLocalStorage() ? 'localStorage' : 'PostgreSQL');
+    console.log('💾 Database mode:', sqliteDB.isUsingLocalStorage() ? 'localStorage' : 'MongoDB');
 
         console.log('2️⃣ Testing post insertion...');
         const testPost = {
@@ -1000,6 +1312,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           author_name: 'Test User',
           author_handle: '@testuser',
           author_avatar: 'test_avatar',
+          author_email: 'test@example.com',
           content: 'This is a test post for database',
           timestamp: new Date().toISOString(),
           likes: 0,
@@ -1045,22 +1358,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
     },
-    forceLocalStorageMode: () => {
-      console.log('🔧 Forcing localStorage mode...');
-      sqliteDB.forceLocalStorageMode();
-      console.log('✅ Switched to localStorage mode');
-    },
-    forcePostgreSQLMode: async () => {
-      console.log('🔧 Attempting to switch to PostgreSQL mode...');
+    forceReconnect: async () => {
+      console.log('🔧 Attempting to reconnect to MongoDB...');
       try {
-        await sqliteDB.forcePostgreSQLMode();
-        console.log('✅ Switched to PostgreSQL mode');
+        await sqliteDB.forceReconnect();
+        console.log('✅ Reconnected to MongoDB');
       } catch (error) {
-        console.error('❌ Failed to switch to PostgreSQL mode:', error);
+        console.error('❌ Failed to reconnect to MongoDB:', error);
       }
     },
     checkDatabaseMode: () => {
-      const mode = sqliteDB.isUsingLocalStorage() ? 'localStorage' : 'PostgreSQL';
+      const mode = sqliteDB.isUsingLocalStorage() ? 'localStorage' : 'MongoDB';
       console.log('💾 Current database mode:', mode);
       return mode;
     }
@@ -1077,6 +1385,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         likedPosts,
         repostedPosts,
         addPost,
+        editPost,
         toggleLike,
         toggleRepost,
         toggleFollow,
@@ -1088,6 +1397,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         exportPostsData,
         addUser,
         getAllUsers,
+        revealPostContent,
       }}
     >
       {children}

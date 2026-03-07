@@ -1,57 +1,55 @@
 import { useState } from 'react';
-import { X, Image as ImageIcon, Smile, MapPin } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { X, Image as ImageIcon, Smile, MapPin, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { ModeratedPost } from '@/utils/postModeration';
 
-interface ComposerProps {
+interface EditModalProps {
+  post: ModeratedPost;
   open: boolean;
   onClose: () => void;
+  onEditSuccess?: () => void;
 }
 
-export const Composer = ({ open, onClose }: ComposerProps) => {
-  const [content, setContent] = useState('');
-  const { addPost } = useApp();
-  const { isAuthenticated, user } = useAuth();
-  const navigate = useNavigate();
+export const EditModal = ({ post, open, onClose, onEditSuccess }: EditModalProps) => {
+  // Use post content directly (bully posts are now auto-deleted, not edited)
+  const [content, setContent] = useState(post.content);
+  const { editPost } = useApp();
+  const { user } = useAuth();
   const maxLength = 280;
 
-  const handlePost = async () => {
-    if (!isAuthenticated) {
-      toast({
-        title: "Login required",
-        description: "Please login to post content.",
-        variant: "destructive"
-      });
-      navigate('/login');
-      return;
-    }
-
-    if (content.trim() && content.length <= maxLength) {
+  const handleEdit = async () => {
+    if (content.trim() && content.length <= maxLength && content !== post.content) {
       try {
-        console.log('📝 Calling addPost with content:', content);
-        await addPost(content);
-        console.log('✅ addPost completed successfully');
+        await editPost(post.id, content);
         toast({
-          title: "Post created!",
-          description: "Your chirp has been posted successfully.",
+          title: "Post updated!",
+          description: "Your post has been edited successfully.",
         });
         setContent('');
         onClose();
+        onEditSuccess?.();
       } catch (error) {
-        console.error('❌ Error in handlePost:', error);
+        console.error('❌ Error editing post:', error);
         toast({
-          title: "Error posting",
-          description: "There was an error posting your content. Please try again.",
+          title: "Error",
+          description: "Failed to update post. Please try again.",
           variant: "destructive"
         });
       }
+    } else if (content === post.content) {
+      toast({
+        title: "No changes made",
+        description: "Please make changes to update the post.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -74,11 +72,11 @@ export const Composer = ({ open, onClose }: ComposerProps) => {
               <X className="w-5 h-5" />
             </Button>
             <Button
-              onClick={handlePost}
-              disabled={!content.trim() || content.length > maxLength}
+              onClick={handleEdit}
+              disabled={!content.trim() || content.length > maxLength || content === post.content}
               className="bg-primary hover:bg-primary/90 text-primary-foreground px-6"
             >
-              Post
+              Update Post
             </Button>
           </div>
 
@@ -90,7 +88,7 @@ export const Composer = ({ open, onClose }: ComposerProps) => {
 
             <div className="flex-1">
               <Textarea
-                placeholder="What's happening?"
+                placeholder="Edit your post..."
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className="min-h-[120px] border-0 focus-visible:ring-0 resize-none text-lg p-0 placeholder:text-muted-foreground"

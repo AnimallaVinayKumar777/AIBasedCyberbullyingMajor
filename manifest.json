@@ -18,7 +18,7 @@
   ],
 
   "background": {
-    "service_worker": "dist/background.js",
+    "service_worker": "background.js",
     "type": "module"
   },
 
@@ -29,17 +29,17 @@
         "https://x.com/*"
       ],
       "js": [
-        "dist/content.js"
+        "content.js"
       ],
       "css": [
-        "dist/content.css"
+        "content.css"
       ],
       "run_at": "document_idle"
     }
   ],
 
   "action": {
-    "default_popup": "dist/popup.html",
+    "default_popup": "popup.html",
     "default_title": "ChirpGuard",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -59,7 +59,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "dist/*",
+        "content.css",
         "icons/*"
       ],
       "matches": [

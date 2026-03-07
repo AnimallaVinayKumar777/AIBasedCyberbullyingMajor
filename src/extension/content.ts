@@ -1,11 +1,12 @@
 // Content script for Twitter cyberbullying detection
-import { detectCyberbullying, getPostModerationAction } from '../utils/cyberbullyingDetection';
+import { CyberbullyingDetector } from '../utils/cyberbullyingDetection';
 import './types';
 
 // Store for processed tweets to avoid reprocessing
 const processedTweets = new Set<string>();
 let isMonitoring = false;
 let observer: MutationObserver | null = null;
+const detector = new CyberbullyingDetector();
 
 // Start monitoring Twitter timeline
 function startMonitoring() {
@@ -55,7 +56,7 @@ function observeTimelineChanges() {
           const element = node as Element;
           // Check if new tweets were added
           const tweets = element.querySelectorAll ? element.querySelectorAll('[data-testid="tweet"]') : [];
-          tweets.forEach(tweet => processTweetElement(tweet));
+          tweets.forEach(tweet => void processTweetElement(tweet));
         }
       });
     });
@@ -77,39 +78,62 @@ function scanExistingTweets() {
 
   tweetSelectors.forEach(selector => {
     const tweets = document.querySelectorAll(selector);
-    tweets.forEach(tweet => processTweetElement(tweet));
+    tweets.forEach(tweet => void processTweetElement(tweet));
   });
 }
 
 // Process individual tweet element
-function processTweetElement(tweetElement: Element) {
+async function processTweetElement(tweetElement: Element) {
   // Try to get tweet content
   const content = extractTweetContent(tweetElement);
   if (!content || content.length < 3) return;
 
   // Try to get tweet ID
-  const tweetId = (tweetElement as HTMLElement).dataset?.tweetId || generateTweetId(tweetElement);
+  const tweetId = getTweetId(tweetElement, content);
   if (processedTweets.has(tweetId)) return;
+  if (tweetElement.querySelector('.chirpguard-overlay')) {
+    processedTweets.add(tweetId);
+    return;
+  }
 
   processedTweets.add(tweetId);
 
   console.log(`🐦 Processing tweet: "${content.substring(0, 50)}..."`);
 
-  // Analyze content for cyberbullying
-  const cyberbullyingResult = detectCyberbullying(content);
-  const moderationAction = getPostModerationAction(content);
+  try {
+    const cyberbullyingResult = await detector.analyzeContent(content);
+    const moderationAction = detector.getModerationAction(cyberbullyingResult);
 
-  if (cyberbullyingResult.isCyberbullying) {
-    console.log(`🚨 Cyberbullying detected! Severity: ${cyberbullyingResult.severity}`);
+    if (cyberbullyingResult.isCyberbullying) {
+      console.log(`🚨 Cyberbullying detected! Severity: ${cyberbullyingResult.severity}`);
 
-    // Apply visual overlay based on severity
-    applyModerationOverlay(tweetElement, {
-      isCyberbullying: cyberbullyingResult.isCyberbullying,
-      severity: cyberbullyingResult.severity,
-      categories: cyberbullyingResult.categories,
-      shouldHide: moderationAction === 'hide',
-      shouldFlag: moderationAction === 'flag'
-    });
+      // Apply visual overlay based on severity
+      applyModerationOverlay(tweetElement, {
+        isCyberbullying: cyberbullyingResult.isCyberbullying,
+        severity: cyberbullyingResult.severity,
+        categories: cyberbullyingResult.categories,
+        shouldHide: moderationAction === 'hide',
+        shouldFlag: moderationAction === 'flag'
+      });
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      chrome.runtime.sendMessage({
+        action: 'REPORT_TWEET',
+        data: {
+          id: tweetId,
+          result: {
+            isCyberbullying: cyberbullyingResult.isCyberbullying,
+            severity: cyberbullyingResult.severity,
+            shouldHide: moderationAction === 'hide',
+            shouldFlag: moderationAction === 'flag'
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Failed to analyze tweet content:', error);
+    processedTweets.delete(tweetId);
   }
 }
 
@@ -135,10 +159,25 @@ function extractTweetContent(tweetElement: Element): string {
 }
 
 // Generate unique ID for tweet element
-function generateTweetId(tweetElement: Element): string {
-  const content = tweetElement.textContent || '';
-  const timestamp = Date.now();
-  return `tweet_${btoa(content.substring(0, 20)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 10)}_${timestamp}`;
+function getTweetId(tweetElement: Element, content: string): string {
+  const link = tweetElement.querySelector('a[href*="/status/"]') as HTMLAnchorElement | null;
+  const href = link?.getAttribute('href') || '';
+  const match = href.match(/status\/(\d+)/);
+
+  if (match?.[1]) {
+    return `tweet_${match[1]}`;
+  }
+
+  return `tweet_${hashString(content)}`;
+}
+
+function hashString(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
 }
 
 // Apply moderation overlay to tweet

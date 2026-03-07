@@ -8,10 +8,12 @@ import { useApp } from '@/context/AppContext';
 
 export default function Home() {
   const [composerOpen, setComposerOpen] = useState(false);
-  const { posts } = useApp();
+  const { posts, currentUser } = useApp();
 
   console.log('🏠 Home component rendering with posts count:', posts.length);
-  console.log('📋 Posts:', posts.map(p => ({ id: p.id, author: p.author.name, content: p.content.substring(0, 30) + '...' })));
+  console.log('📋 Posts:', posts.map(p => ({ id: p.id, author: p.author.name, authorId: p.author.id, content: p.content.substring(0, 30) + '...' })));
+  console.log('👤 Current user:', { name: currentUser?.name, id: currentUser?.id, handle: currentUser?.handle });
+  console.log('🔍 Checking if posts are from different users:', new Set(posts.map(p => p.author.id)).size > 1 ? 'Multi-user posts detected' : 'Single-user or no posts');
 
   return (
     <>
@@ -25,9 +27,22 @@ export default function Home() {
       </div>
 
       <div className="border-b border-border">
-        {posts.map((post) => (
-          <PostCard key={post.id} post={post} />
-        ))}
+        {posts.map((post, index) => {
+          if (!post) {
+            console.error('❌ Undefined post at index', index);
+            return null;
+          }
+          try {
+            return <PostCard key={post.id} post={post} />;
+          } catch (error) {
+            console.error('❌ Error rendering PostCard for post:', post.id, error);
+            return (
+              <div key={post.id} className="p-4 border-b border-border text-red-500">
+                Error rendering post: {post.id}
+              </div>
+            );
+          }
+        })}
       </div>
 
       <Button

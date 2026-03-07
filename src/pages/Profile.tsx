@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, MapPin, Calendar, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, BadgeCheck, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -103,6 +103,12 @@ export default function Profile() {
               )}
             </h2>
             <p className="text-muted-foreground">{user.handle}</p>
+            {user.email && (
+              <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                <Mail className="w-4 h-4" />
+                {user.email}
+              </p>
+            )}
           </div>
 
           {user.bio && (

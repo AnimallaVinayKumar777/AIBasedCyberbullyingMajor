@@ -32,7 +32,7 @@ declare global {
 declare namespace chrome {
   namespace tabs {
     function query(queryInfo: any, callback: (tabs: ChromeTab[]) => void): void;
-    function sendMessage(tabId: number, message: any): Promise<any>;
+    function sendMessage(tabId: number, message: any, callback?: (response: any) => void): void;
     const onUpdated: {
       addListener(callback: (tabId: number, changeInfo: any, tab: ChromeTab) => void): void;
     };
@@ -46,6 +46,7 @@ declare namespace chrome {
   }
 
   namespace runtime {
+    const lastError: { message?: string } | undefined;
     const onMessage: {
       addListener(callback: (message: any, sender: any, sendResponse: (response: any) => void) => boolean): void;
     };
@@ -55,6 +56,10 @@ declare namespace chrome {
   namespace storage {
     function get(keys: string | string[], callback: (result: any) => void): void;
     function set(items: any, callback?: () => void): void;
+    const local: {
+      get(keys: string | string[], callback: (result: any) => void): void;
+      set(items: any, callback?: () => void): void;
+    };
   }
 }
 

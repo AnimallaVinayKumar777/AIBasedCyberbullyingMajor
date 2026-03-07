@@ -19,6 +19,7 @@ interface AuthContextType extends AuthState {
   signup: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
   updateProfile: (updates: Partial<AuthUser>) => void;
+  deactivateAccount: (userId: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -100,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Find user by email
+    // First check mock credentials
     const foundUser = MOCK_USER_CREDENTIALS.find(u => u.email === email);
 
     if (foundUser && foundUser.password === password) {
@@ -116,15 +117,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       setIsLoading(false);
       return true;
-    } else {
-      toast({
-        title: "Login failed",
-        description: "Invalid email or password",
-        variant: "destructive"
-      });
-      setIsLoading(false);
-      return false;
     }
+
+    // Check if user exists in database (for users who signed up)
+    try {
+      await sqliteDB.initialize();
+      const dbUsers = await sqliteDB.getAllUsers();
+      const dbUser = dbUsers.find(u => u.email === email);
+      
+      if (dbUser) {
+        // Create auth user from database user
+        const authUserFromDB: AuthUser = {
+          id: dbUser.id,
+          name: dbUser.name,
+          handle: dbUser.handle,
+          email: dbUser.email,
+          avatar: dbUser.avatar,
+          bio: dbUser.bio || '',
+          coverImage: undefined,
+          followers: dbUser.followers,
+          following: dbUser.following,
+          verified: dbUser.verified,
+          isAuthenticated: true,
+        };
+
+        setUser(authUserFromDB);
+        toast({
+          title: "Welcome back!",
+          description: `Logged in as ${authUserFromDB.name}`,
+        });
+        setIsLoading(false);
+        return true;
+      }
+    } catch (error) {
+      // Database not available - user can still login with mock credentials
+      console.warn('⚠️ Database not available for login:', error);
+    }
+
+    toast({
+      title: "Login failed",
+      description: "Invalid email or password",
+      variant: "destructive"
+    });
+    setIsLoading(false);
+    return false;
   };
 
   const signup = async (name: string, email: string, password: string): Promise<boolean> => {
@@ -168,10 +204,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Add to mock database
     MOCK_USER_CREDENTIALS.push(newUserCredentials);
 
-    // Save to SQLite database
+    // Save to MongoDB database
     try {
       await sqliteDB.initialize();
-      sqliteDB.insertUser({
+      await sqliteDB.insertUser({
         id: newUser.id,
         name: newUser.name,
         handle: newUser.handle,
@@ -182,9 +218,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         following: 0,
         verified: false
       });
-      console.log('👤 New user saved to SQLite database');
+      console.log('👤 New user saved to MongoDB database');
     } catch (error) {
-      console.error('❌ Error saving user to database:', error);
+      // User is still created in memory even if DB save fails
+      console.warn('⚠️ Could not save user to database (created in memory):', error);
     }
 
     setUser(newUser);
@@ -202,6 +239,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       title: "Logged out",
       description: "You have been successfully logged out",
     });
+  };
+
+  const deactivateAccount = async (userId: string): Promise<boolean> => {
+    try {
+      // Find user index in mock database
+      const userIndex = MOCK_USER_CREDENTIALS.findIndex(u => u.id === userId);
+      if (userIndex !== -1) {
+        // Mark user as suspended
+        MOCK_USER_CREDENTIALS[userIndex] = {
+          ...MOCK_USER_CREDENTIALS[userIndex],
+          status: 'suspended'
+        };
+        
+        // If current user is being deactivated, log them out
+        if (user && user.id === userId) {
+          setUser(null);
+          localStorage.removeItem('chirp_user');
+        }
+        
+        console.log('🔒 Account deactivated:', userId);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ Error deactivating account:', error);
+      return false;
+    }
   };
 
   const updateProfile = (updates: Partial<AuthUser>) => {
@@ -231,6 +295,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signup,
     logout,
     updateProfile,
+    deactivateAccount,
   };
 
   return (
