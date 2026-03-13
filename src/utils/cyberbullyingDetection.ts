@@ -130,7 +130,7 @@ const DEFAULT_CONFIG: DetectionConfig = {
     'నేను నిన్చు కుంటాను', // I will kick you
     'నేను నిన్చు కొట్టాను',
     'నేను దేగుత','నువ్వు మూర్ఖుడివి',
-    'तुम एक बेवकूफ हो',// I beat you
+    'तुम एक बेवकूफ हो','मैं तुम्हें मार डालूँगा','मैं देगुता हूँ।',// I beat you
     // Kannada threat keywords
     'kollu', 'maru', 'kattu', 'kottu', 'nashta', 'tappa', 'dari',
     'bhaya', 'hatya', 'vadhe', 'kollalu', 'maralu', 'kattuvenu',
