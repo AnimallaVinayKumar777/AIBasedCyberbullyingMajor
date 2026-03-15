@@ -1,0 +1,25 @@
+{
+  "name": "@safenet/sdk",
+  "version": "1.0.0",
+  "description": "SafeNet JavaScript SDK for cyberbullying detection",
+  "main": "dist/index.iife.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "types": "./dist/index.d.ts",
+    "import": "./dist/index.js",
+    "require": "./dist/index.iife.js"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-sdk.js",
+    "build:watch": "node ../../scripts/build-sdk.js --watch"
+  },
+  "keywords": [
+    "cyberbullying",
+    "content-moderation",
+    "safety",
+    "ai"
+  ],
+  "author": "SafeNet",
+  "license": "MIT"
+}
